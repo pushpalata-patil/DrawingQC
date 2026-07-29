@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: drawingqc-web
+    runtime: docker
+    plan: free
+    dockerfilePath: ./DrawingQC.Web/Dockerfile
+    dockerContext: ./DrawingQC.Web
+    healthCheckPath: /health
+    autoDeploy: true
