@@ -12,4 +12,13 @@
     <PackageReference Include="UglyToad.PdfPig" Version="1.7.0-custom-5" />
   </ItemGroup>
 
+  <!-- These are separate projects nested in subfolders. Exclude them so this
+       console app only compiles its own Program.cs and not their sources or
+       generated files. -->
+  <ItemGroup>
+    <Compile Remove="DrawingQC.UI\**\*.cs" />
+    <Compile Remove="DrawingQC.Web\**\*.cs" />
+    <Compile Remove="src\**\*.cs" />
+  </ItemGroup>
+
 </Project>

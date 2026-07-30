@@ -94,8 +94,7 @@ public sealed class MainForm : Form
         _grid.Columns.Add(MakeCol("Pdf", "Support PDF", 0, true));
         _grid.Columns.Add(MakeCol("D1", "1st drawing name", 160, false));
         _grid.Columns.Add(MakeCol("D2", "2nd drawing name", 160, false));
-        _grid.Columns.Add(MakeCol("Status", "Status", 90, false));
-        _grid.Columns.Add(MakeCol("Missing", "Not found in PDF", 170, false));
+        _grid.Columns.Add(MakeCol("Status", "Status", 100, false));
 
         var gridHost = new Panel { Dock = DockStyle.Fill, Padding = new Padding(12, 6, 12, 6) };
         gridHost.Controls.Add(_grid);
@@ -196,53 +195,31 @@ public sealed class MainForm : Form
         {
             var results = await Task.Run(() => QcEngine.Analyze(zip, progress));
 
-            // Always show results in the grid first, so nothing is lost even if the
-            // Excel file happens to be open/locked.
+            _statusLabel.Text = "Writing Excel report...";
+            await Task.Run(() => QcEngine.WriteReport(results, outPath));
+            _lastReportPath = outPath;
+
             PopulateGrid(results);
+
             int matched = results.Count(r => r.FinalStatus == "Matched");
             int unmatched = results.Count(r => r.FinalStatus == "Unmatched");
             int duplicate = results.Count(r => r.FinalStatus == "Duplicate");
             _countsLabel.Text = $"Total: {results.Count}     Matched: {matched}     Unmatched: {unmatched}     Duplicate: {duplicate}";
-
-            _statusLabel.Text = "Writing Excel report...";
-            string saved = await Task.Run(() => WriteReportResilient(results, outPath));
-            _lastReportPath = saved;
+            _statusLabel.Text = $"Done. Report saved to: {outPath}";
             _openExcelBtn.Enabled = true;
-
-            _statusLabel.Text = string.Equals(saved, outPath, StringComparison.OrdinalIgnoreCase)
-                ? $"Done. Report saved to: {saved}"
-                : $"The chosen file was open in Excel, so the report was saved to a new copy: {saved}";
         }
         catch (Exception ex)
         {
             _statusLabel.Text = "Failed.";
-            MessageBox.Show(this, "Error: " + ex.Message,
+            MessageBox.Show(this,
+                ex.Message.Contains("being used by another process", StringComparison.OrdinalIgnoreCase)
+                    ? "Could not save the Excel report because the file is open. Please close it in Excel and try again."
+                    : "Error: " + ex.Message,
                 "Drawing QC", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
         finally
         {
             SetBusy(false);
-        }
-    }
-
-    /// <summary>
-    /// Saves the report; if the target file is open/locked in Excel, falls back to a
-    /// timestamped copy in the same folder and returns the path actually written.
-    /// </summary>
-    private static string WriteReportResilient(List<PdfResult> results, string outPath)
-    {
-        try
-        {
-            QcEngine.WriteReport(results, outPath);
-            return outPath;
-        }
-        catch (IOException)
-        {
-            string dir = Path.GetDirectoryName(outPath) ?? ".";
-            string name = Path.GetFileNameWithoutExtension(outPath);
-            string alt = Path.Combine(dir, $"{name} {DateTime.Now:yyyy-MM-dd HHmmss}.xlsx");
-            QcEngine.WriteReport(results, alt);
-            return alt;
         }
     }
 
@@ -264,8 +241,7 @@ public sealed class MainForm : Form
                 r.FileName,
                 string.IsNullOrWhiteSpace(r.Drawing1) ? "-" : r.Drawing1,
                 string.IsNullOrWhiteSpace(r.Drawing2) ? "-" : r.Drawing2,
-                r.FinalStatus,
-                string.IsNullOrWhiteSpace(r.NotFoundInPdf) ? "-" : r.NotFoundInPdf);
+                r.FinalStatus);
 
             Color back, fore;
             switch (r.FinalStatus)

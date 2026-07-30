@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Drawing QC</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%234f46e5'/%3E%3Cpath d='M9 16.5l4.5 4.5L23 11' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+  <style>
+    :root {
+      --accent: #4f46e5; --accent-dark: #4338ca;
+      --grad: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%);
+      --grad-hover: linear-gradient(135deg, #1d4ed8 0%, #6d28d9 100%);
+      --panel: #ffffff; --border: #e4e8ef;
+      --ink: #131a2b; --muted: #5c6a85; --faint: #93a0b8;
+      --sidebar: #131a2b; --sidebar-2: #202b46; --sidebar-text: #cdd4e2; --sidebar-muted: #7c869c;
+      --match-bg: #dcefe0; --match-fg: #1b6b3a;
+      --unmatch-bg: #fadcdf; --unmatch-fg: #9c0006;
+      --dup-bg: #fbeec2; --dup-fg: #8a5a00;
+      --sidebar-w: 252px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; color: var(--ink); min-height: 100vh;
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      background:
+        radial-gradient(700px 380px at 78% -8%, #e9e3fb 0%, transparent 60%),
+        radial-gradient(600px 340px at 105% 40%, #dce7fd 0%, transparent 55%),
+        #eef0f4;
+    }
+
+    /* ---------- Sidebar ---------- */
+    .side {
+      position: fixed; top: 0; left: 0; bottom: 0; width: var(--sidebar-w);
+      background: linear-gradient(170deg, #1b1e3a 0%, #241a44 55%, #2b1840 100%);
+      color: var(--sidebar-text);
+      display: flex; flex-direction: column; padding: 22px 18px; z-index: 10;
+    }
+    .brand { display: flex; align-items: center; gap: 11px; font-size: 17px; font-weight: 700; color: #fff; padding: 4px 6px 24px; }
+    .brand .mark {
+      width: 32px; height: 32px; border-radius: 9px; background: var(--grad);
+      display: grid; place-items: center; color: #fff; flex-shrink: 0;
+      box-shadow: 0 6px 16px rgba(99,60,220,.45);
+    }
+    .nav { display: flex; flex-direction: column; gap: 3px; }
+    .nav-item {
+      display: flex; align-items: center; gap: 11px; padding: 10px 12px; border-radius: 8px;
+      color: var(--sidebar-text); font-size: 14px; font-weight: 500; text-decoration: none; cursor: pointer;
+    }
+    .nav-item:hover { background: var(--sidebar-2); }
+    .nav-item.active { background: var(--grad); color: #fff; box-shadow: 0 8px 20px rgba(99,60,220,.4); }
+    .nav-item svg { width: 17px; height: 17px; flex-shrink: 0; }
+
+    .side-section { margin-top: 26px; padding: 0 6px; }
+    .side-title { font-size: 11px; letter-spacing: .11em; text-transform: uppercase; color: var(--sidebar-muted); margin-bottom: 12px; }
+
+    /* Client accordion */
+    .clients { display: flex; flex-direction: column; gap: 8px; }
+    .client { display: flex; flex-direction: column; }
+    .client-btn {
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+      width: 100%; text-align: left;
+      background: rgba(255,255,255,.06); color: var(--sidebar-text);
+      border: 1px solid rgba(255,255,255,.12); border-radius: 9px;
+      padding: 10px 14px; font-size: 13px; font-weight: 600; letter-spacing: .02em;
+      cursor: pointer; box-shadow: none; transition: background .12s ease, border-color .12s ease;
+    }
+    .client-btn:hover { background: rgba(255,255,255,.12); border-color: rgba(255,255,255,.28); }
+    .client-btn.active { background: var(--grad); color: #fff; border-color: transparent; box-shadow: 0 8px 18px rgba(99,60,220,.4); }
+    .client-btn .chev { width: 15px; height: 15px; opacity: .7; transition: transform .18s ease; flex-shrink: 0; }
+    .client.open .client-btn .chev { transform: rotate(180deg); }
+
+    /* Tools under a client */
+    .client .tools { display: none; flex-direction: column; gap: 5px; margin: 6px 0 4px; padding-left: 12px; border-left: 1.5px solid rgba(255,255,255,.14); margin-left: 6px; }
+    .client.open .tools { display: flex; }
+    .tool-btn {
+      width: 100%; text-align: left;
+      background: transparent; color: var(--sidebar-text);
+      border: 1px solid transparent; border-radius: 8px;
+      padding: 8px 12px; font-size: 12.5px; font-weight: 500;
+      cursor: pointer; box-shadow: none; transition: background .12s ease, color .12s ease;
+    }
+    .tool-btn:hover { background: rgba(255,255,255,.10); }
+    .tool-btn.active { background: rgba(124,58,237,.28); color: #fff; border-color: rgba(124,58,237,.55); font-weight: 600; }
+    .tools-empty { font-size: 12px; color: var(--sidebar-muted); font-style: italic; padding: 6px 12px; }
+    .legend-row { display: flex; align-items: center; gap: 10px; font-size: 12.5px; color: var(--sidebar-text); margin-bottom: 11px; line-height: 1.35; }
+    .legend-row .swatch { width: 11px; height: 11px; border-radius: 3px; flex-shrink: 0; margin-top: 1px; }
+    .legend-row .swatch.m { background: var(--match-fg); }
+    .legend-row .swatch.u { background: var(--unmatch-fg); }
+    .legend-row .swatch.d { background: var(--dup-fg); }
+    .legend-row b { color: #fff; font-weight: 600; }
+
+    .side-foot { margin-top: auto; padding: 14px 6px 2px; font-size: 11.5px; color: var(--sidebar-muted); line-height: 1.5; border-top: 1px solid var(--sidebar-2); }
+
+    /* ---------- Main ---------- */
+    .main { margin-left: var(--sidebar-w); padding: 30px 40px 60px; }
+    .mhead { margin-bottom: 24px; }
+    .mhead h1 {
+      margin: 0; font-size: 30px; font-weight: 800; letter-spacing: -.02em;
+      background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; width: fit-content;
+    }
+    .mhead .sub { margin: 7px 0 0; color: var(--muted); font-size: 14.5px; }
+    .client-tag {
+      display: inline-block; background: #ede9fe; color: #6d28d9;
+      font-size: 11px; font-weight: 700; letter-spacing: .05em;
+      padding: 3px 9px; border-radius: 999px; margin-right: 8px; vertical-align: 1px;
+    }
+
+    .view.hidden { display: none; }
+
+    /* Client / tool tab bar */
+    .toolbar { display: flex; flex-direction: column; gap: 14px; margin-bottom: 26px; }
+    .tabs-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .tool-tabs { min-height: 34px; }
+    .ctab {
+      background: var(--panel); color: var(--muted);
+      border: 1px solid var(--border); border-radius: 11px;
+      padding: 11px 22px; font-size: 14px; font-weight: 700; letter-spacing: .01em;
+      cursor: pointer; box-shadow: 0 2px 6px rgba(16,24,40,.05);
+      transition: border-color .14s ease, color .14s ease, background .14s ease;
+    }
+    .ctab:hover:not(.active) { border-color: var(--accent); color: var(--ink); transform: none; box-shadow: 0 2px 6px rgba(16,24,40,.05); filter: none; }
+    .ctab.active { background: var(--grad); color: #fff; border-color: transparent; box-shadow: 0 8px 18px rgba(99,60,220,.3); }
+    .ctab.active:hover { transform: none; filter: none; }
+
+    .ttab {
+      background: transparent; color: var(--muted);
+      border: 1px solid var(--border); border-radius: 999px;
+      padding: 8px 17px; font-size: 13px; font-weight: 600;
+      cursor: pointer; box-shadow: none;
+      transition: border-color .12s ease, color .12s ease, background .12s ease;
+    }
+    .ttab:hover:not(.active) { border-color: var(--accent); color: var(--ink); transform: none; box-shadow: none; filter: none; }
+    .ttab.active { background: var(--ink); color: #fff; border-color: var(--ink); }
+    .ttab.active:hover { transform: none; filter: none; box-shadow: none; }
+    .no-tools { color: var(--faint); font-size: 13px; font-style: italic; }
+
+    /* Placeholder tool view */
+    .placeholder { text-align: center; padding: 48px 30px; }
+    .placeholder .ph-ic { width: 60px; height: 60px; border-radius: 16px; background: #ede9fe; color: var(--accent); display: inline-grid; place-items: center; margin-bottom: 18px; }
+    .placeholder .ph-ic svg { width: 30px; height: 30px; }
+    .placeholder h2 { margin: 0 0 8px; font-size: 19px; font-weight: 700; }
+    .placeholder p { margin: 0 auto; max-width: 460px; color: var(--muted); font-size: 14.5px; line-height: 1.6; }
+
+    .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 24px; box-shadow: 0 6px 22px rgba(16,24,40,.06); }
+    .panel + .panel, .stats + .panel, .panel + .stats { margin-top: 20px; }
+
+    /* Stat cards */
+    .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 20px; }
+    .stat {
+      position: relative; background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+      padding: 18px 20px; box-shadow: 0 4px 16px rgba(16,24,40,.05);
+      transition: transform .16s ease, box-shadow .16s ease;
+    }
+    .stat:hover { transform: translateY(-3px); box-shadow: 0 12px 26px rgba(16,24,40,.10); }
+    .stat .chip {
+      width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; margin-bottom: 12px;
+    }
+    .stat .chip svg { width: 18px; height: 18px; }
+    .stat .n { font-size: 32px; font-weight: 800; letter-spacing: -.02em; line-height: 1; }
+    .stat .l { color: var(--muted); font-size: 13px; margin-top: 8px; }
+    .stat.total .chip { background: #e6ebfe; color: var(--accent); }
+    .stat.matched .chip { background: var(--match-bg); color: var(--match-fg); }
+    .stat.unmatched .chip { background: var(--unmatch-bg); color: var(--unmatch-fg); }
+    .stat.duplicate .chip { background: var(--dup-bg); color: var(--dup-fg); }
+    .stat.matched .n { color: var(--match-fg); }
+    .stat.unmatched .n { color: var(--unmatch-fg); }
+    .stat.duplicate .n { color: var(--dup-fg); }
+
+    /* Upload — compact single row */
+    .drop {
+      display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 16px;
+      border: 2px dashed #cdd5e2; border-radius: 10px; background: #f7f9fc;
+      padding: 18px 24px; cursor: pointer; transition: .15s;
+    }
+    .drop:hover, .drop.drag { border-color: var(--accent); background: #f0f0fe; }
+    .drop .ic { width: 44px; height: 44px; border-radius: 12px; background: var(--grad); color: #fff; display: grid; place-items: center; box-shadow: 0 8px 18px rgba(99,60,220,.32); transition: transform .16s ease; flex-shrink: 0; }
+    .drop:hover .ic, .drop.drag .ic { transform: scale(1.06); }
+    .drop .ic svg { width: 21px; height: 21px; }
+    .drop-text { text-align: left; }
+    .drop-main { font-size: 15px; color: var(--ink); }
+    .drop-main strong { color: var(--accent); font-weight: 700; }
+    .drop small { display: block; margin-top: 2px; font-size: 12px; color: var(--faint); }
+    #file { display: none; }
+
+    .bar { display: flex; align-items: center; gap: 16px; margin-top: 18px; flex-wrap: wrap; }
+    button {
+      background: var(--grad); color: #fff; border: 0; border-radius: 10px;
+      padding: 12px 26px; font-size: 14.5px; font-weight: 600; cursor: pointer;
+      transition: transform .12s ease, box-shadow .12s ease, filter .12s ease;
+      box-shadow: 0 8px 20px rgba(99,60,220,.32);
+    }
+    button:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 12px 26px rgba(99,60,220,.42); filter: brightness(1.05); }
+    button:disabled { background: #c4cbd8; color: #eef1f5; cursor: not-allowed; box-shadow: none; }
+    button.secondary { background: var(--ink); box-shadow: 0 6px 16px rgba(19,26,43,.25); }
+    button.secondary:hover:not(:disabled) { box-shadow: 0 10px 22px rgba(19,26,43,.32); }
+    .fname { color: var(--muted); font-size: 14px; }
+
+    /* Results */
+    .results-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 14px; flex-wrap: wrap; }
+    .results-head h2 { margin: 0; font-size: 18px; font-weight: 700; }
+    .results-head .actions { display: flex; gap: 10px; flex-wrap: wrap; }
+    button.acad { background: linear-gradient(135deg, #e11d48 0%, #b91c1c 100%); box-shadow: 0 8px 20px rgba(190,24,40,.30); }
+    button.acad:hover:not(:disabled) { box-shadow: 0 12px 26px rgba(190,24,40,.42); }
+    .sync-msg { margin: -4px 0 16px; padding: 11px 15px; border-radius: 9px; font-size: 13.5px; }
+    .sync-msg.ok { background: var(--match-bg); color: var(--match-fg); border: 1px solid #9fd3ac; }
+    .sync-msg.err { background: var(--unmatch-bg); color: var(--unmatch-fg); border: 1px solid #e6a3a8; }
+
+    .filters { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+    .filters button {
+      background: #f1f4f9; color: var(--muted); border: 1px solid var(--border);
+      padding: 7px 15px; font-size: 13px; font-weight: 500; border-radius: 8px;
+    }
+    .filters button:hover:not(.active) { border-color: var(--accent); color: var(--ink); }
+    .filters button.active { background: var(--ink); color: #fff; border-color: var(--ink); }
+
+    table { width: 100%; border-collapse: collapse; font-size: 13.5px; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+    th { background: #f4f6fa; color: var(--muted); text-align: left; padding: 11px 14px; font-size: 12px; letter-spacing: .03em; text-transform: uppercase; font-weight: 600; border-bottom: 1px solid var(--border); }
+    td { padding: 10px 14px; border-top: 1px solid var(--border); }
+    tr.matched td { background: var(--match-bg); color: var(--match-fg); }
+    tr.unmatched td { background: var(--unmatch-bg); color: var(--unmatch-fg); }
+    tr.duplicate td { background: var(--dup-bg); color: var(--dup-fg); }
+    .status-pill { font-weight: 700; }
+
+    .msg { margin-top: 16px; padding: 12px 16px; border-radius: 9px; font-size: 14px; }
+    .msg.err { background: var(--unmatch-bg); color: var(--unmatch-fg); border: 1px solid #e6a3a8; }
+    .spinner { display: inline-block; width: 15px; height: 15px; border: 2px solid rgba(255,255,255,.5); border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite; vertical-align: -2px; margin-right: 8px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .hidden { display: none; }
+
+    @media (max-width: 820px) {
+      :root { --sidebar-w: 0px; }
+      .side {
+        position: static; width: 100%; flex-direction: row; align-items: center;
+        flex-wrap: wrap; gap: 8px 18px; padding: 14px 20px;
+      }
+      .brand { padding: 0; }
+      .nav { flex-direction: row; }
+      .side-section, .side-foot { display: none; }
+      .main { margin-left: 0; padding: 24px 20px 48px; }
+      .stats { grid-template-columns: repeat(2, 1fr); }
+    }
+  </style>
+</head>
+<body>
+  <aside class="side">
+    <div class="brand">
+      <span class="mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h10l6 6v10a0 0 0 0 1 0 0H4z"/><path d="M14 4v6h6"/><path d="M8 14h8M8 17h5"/></svg>
+      </span>
+      Drawing QC
+    </div>
+
+    <nav class="nav">
+      <a class="nav-item active">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z"/></svg>
+        Workspace
+      </a>
+    </nav>
+
+    <div class="side-section">
+      <div class="side-title">Status key</div>
+      <div class="legend-row"><span class="swatch m"></span><span><b>Matched</b> — file name found on the sheet</span></div>
+      <div class="legend-row"><span class="swatch u"></span><span><b>Unmatched</b> — no drawing number match</span></div>
+      <div class="legend-row"><span class="swatch d"></span><span><b>Duplicate</b> — number seen on 2+ sheets</span></div>
+    </div>
+
+    <div class="side-foot">PDF parsing runs server-side.<br>PdfPig + ClosedXML · exports .xlsx</div>
+  </aside>
+
+  <main class="main">
+   <div class="toolbar">
+     <div class="tabs-row client-tabs" id="clientTabs">
+       <button type="button" class="ctab" data-client="S2NERGY">S2NERGY</button>
+       <button type="button" class="ctab" data-client="QATAR">QATAR</button>
+       <button type="button" class="ctab" data-client="UAE">UAE</button>
+       <button type="button" class="ctab" data-client="KBR">KBR</button>
+     </div>
+     <div class="tabs-row tool-tabs" id="toolTabs"></div>
+   </div>
+
+   <div id="view-qc" class="view">
+    <div class="mhead">
+      <h1>QC Check</h1>
+      <p class="sub"><span class="client-tag" id="qc-client">S2NERGY</span> Upload a .zip of drawing PDFs and generate the QC register.</p>
+    </div>
+
+    <section class="stats">
+      <div class="stat total">
+        <div class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h10l6 6v10H4z"/><path d="M14 4v6h6"/></svg></div>
+        <div class="n" id="c-total">0</div><div class="l">Total PDFs</div>
+      </div>
+      <div class="stat matched">
+        <div class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg></div>
+        <div class="n" id="c-matched">0</div><div class="l">Matched</div>
+      </div>
+      <div class="stat unmatched">
+        <div class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg></div>
+        <div class="n" id="c-unmatched">0</div><div class="l">Unmatched</div>
+      </div>
+      <div class="stat duplicate">
+        <div class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M4 16V6a2 2 0 0 1 2-2h10"/></svg></div>
+        <div class="n" id="c-duplicate">0</div><div class="l">Duplicate</div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <label class="drop" id="drop">
+        <span class="ic">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="M8 8l4-4 4 4"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+        </span>
+        <input type="file" id="file" accept=".zip" />
+        <div class="drop-text">
+          <div class="drop-main"><strong>Drop a .zip here</strong> or click to choose</div>
+          <small>Only .zip archives of PDF drawings are supported.</small>
+        </div>
+      </label>
+
+      <div class="bar">
+        <button id="run" disabled>Run QC</button>
+        <span class="fname" id="fname">No file selected</span>
+      </div>
+
+      <div id="error" class="msg err hidden"></div>
+    </section>
+
+    <section id="results" class="panel hidden">
+      <div class="results-head">
+        <h2>Results</h2>
+        <div class="actions">
+          <button id="sync" class="acad">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;vertical-align:-3px;margin-right:7px"><path d="M21 12a9 9 0 0 1-9 9 9 9 0 0 1-6.7-3M3 12a9 9 0 0 1 9-9 9 9 0 0 1 6.7 3"/><path d="M21 3v6h-6M3 21v-6h6"/></svg>
+            Sync to AutoCAD
+          </button>
+          <button id="download" class="secondary">Download Excel report</button>
+        </div>
+      </div>
+      <div id="syncMsg" class="sync-msg hidden"></div>
+
+      <div class="filters" id="filters">
+        <button data-f="all" class="active">All</button>
+        <button data-f="Matched">Matched</button>
+        <button data-f="Unmatched">Unmatched</button>
+        <button data-f="Duplicate">Duplicate</button>
+      </div>
+
+      <table>
+        <thead>
+          <tr><th>Sr.No</th><th>Support PDF</th><th>1st drawing name</th><th>2nd drawing name</th><th>Status</th></tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </section>
+   </div><!-- /view-qc -->
+
+   <div id="view-mto" class="view hidden">
+     <div class="mhead">
+       <h1>MTO Check</h1>
+       <p class="sub"><span class="client-tag">S2NERGY</span> Material Take-Off verification.</p>
+     </div>
+     <section class="panel placeholder">
+       <span class="ph-ic">
+         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h18v18H3z"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg>
+       </span>
+       <h2>MTO Check is set up</h2>
+       <p>This tool is wired into the S2NERGY workspace and ready for its logic. Tell me what an MTO Check should do — the inputs it takes and the output you expect — and I'll build it out.</p>
+     </section>
+   </div><!-- /view-mto -->
+
+   <div id="view-booklet" class="view hidden">
+     <div class="mhead">
+       <h1>Booklet</h1>
+       <p class="sub"><span class="client-tag">—</span> Assemble drawings into a booklet.</p>
+     </div>
+     <section class="panel placeholder">
+       <span class="ph-ic">
+         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v15"/><path d="M12 5a4 4 0 0 0-4-2H3v14h5a4 4 0 0 1 4 2"/><path d="M12 5a4 4 0 0 1 4-2h5v14h-5a4 4 0 0 0-4 2"/></svg>
+       </span>
+       <h2>Booklet is set up</h2>
+       <p>This tool is wired into the workspace and ready for its logic. Tell me what the Booklet tool should do — the inputs it takes and the output you expect — and I'll build it out.</p>
+     </section>
+   </div><!-- /view-booklet -->
+
+   <div id="view-empty" class="view hidden">
+     <div class="mhead">
+       <h1>No tools yet</h1>
+       <p class="sub"><span class="client-tag" id="empty-client">—</span> Tools for this client haven't been added.</p>
+     </div>
+     <section class="panel placeholder">
+       <span class="ph-ic">
+         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+       </span>
+       <h2>Nothing here — yet</h2>
+       <p>This client is set up but has no tools configured. Tell me which tools it should have and I'll add them, just like S2NERGY.</p>
+     </section>
+   </div><!-- /view-empty -->
+  </main>
+
+  <script>
+    const fileInput = document.getElementById('file');
+    const drop = document.getElementById('drop');
+    const runBtn = document.getElementById('run');
+    const fname = document.getElementById('fname');
+    const errBox = document.getElementById('error');
+    const results = document.getElementById('results');
+    const tbody = document.getElementById('tbody');
+    const downloadBtn = document.getElementById('download');
+
+    let selectedFile = null;
+    let reportToken = null;
+    let reportName = 'QC Report.xlsx';
+    let allRows = [];
+    let filter = 'all';
+
+    function setFile(f) {
+      selectedFile = f;
+      fname.textContent = f ? f.name : 'No file selected';
+      runBtn.disabled = !f;
+    }
+
+    fileInput.addEventListener('change', e => setFile(e.target.files[0] || null));
+    ['dragover', 'dragenter'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('drag'); }));
+    ['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('drag'); }));
+    drop.addEventListener('drop', e => { if (e.dataTransfer.files[0]) setFile(e.dataTransfer.files[0]); });
+
+    function showError(msg) { errBox.textContent = msg; errBox.classList.remove('hidden'); }
+    function clearError() { errBox.classList.add('hidden'); }
+
+    runBtn.addEventListener('click', async () => {
+      if (!selectedFile) return;
+      clearError();
+      runBtn.disabled = true;
+      runBtn.innerHTML = '<span class="spinner"></span>Analyzing…';
+
+      try {
+        const fd = new FormData();
+        fd.append('file', selectedFile);
+        const res = await fetch('/api/analyze', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (!res.ok) { showError(data.error || data.detail || 'Analysis failed.'); return; }
+
+        reportToken = data.reportToken;
+        reportName = data.reportName;
+        allRows = data.rows;
+
+        document.getElementById('c-total').textContent = data.summary.total;
+        document.getElementById('c-matched').textContent = data.summary.matched;
+        document.getElementById('c-unmatched').textContent = data.summary.unmatched;
+        document.getElementById('c-duplicate').textContent = data.summary.duplicate;
+
+        filter = 'all';
+        document.querySelectorAll('#filters button').forEach(b => b.classList.toggle('active', b.dataset.f === 'all'));
+        renderRows();
+        results.classList.remove('hidden');
+      } catch (err) {
+        showError('Request failed: ' + err.message);
+      } finally {
+        runBtn.disabled = false;
+        runBtn.textContent = 'Run QC';
+      }
+    });
+
+    function renderRows() {
+      tbody.innerHTML = '';
+      const rows = filter === 'all' ? allRows : allRows.filter(r => r.status === filter);
+      for (const r of rows) {
+        const tr = document.createElement('tr');
+        tr.className = r.status.toLowerCase();
+        tr.innerHTML =
+          `<td>${r.srNo}</td>` +
+          `<td>${escapeHtml(r.fileName)}</td>` +
+          `<td>${escapeHtml(r.drawing1)}</td>` +
+          `<td>${escapeHtml(r.drawing2)}</td>` +
+          `<td class="status-pill">${r.status}</td>`;
+        tbody.appendChild(tr);
+      }
+    }
+
+    document.getElementById('filters').addEventListener('click', e => {
+      if (e.target.tagName !== 'BUTTON') return;
+      filter = e.target.dataset.f;
+      document.querySelectorAll('#filters button').forEach(b => b.classList.toggle('active', b === e.target));
+      renderRows();
+    });
+
+    downloadBtn.addEventListener('click', () => {
+      if (reportToken) window.location.href = '/api/report/' + reportToken;
+    });
+
+    // --- Sync the QC register into the open AutoCAD drawing (live COM) ---
+    const syncBtn = document.getElementById('sync');
+    const syncMsg = document.getElementById('syncMsg');
+
+    function showSyncMsg(msg, ok) {
+      syncMsg.textContent = msg;
+      syncMsg.className = 'sync-msg ' + (ok ? 'ok' : 'err');
+    }
+
+    syncBtn.addEventListener('click', async () => {
+      if (!allRows.length) return;
+      syncBtn.disabled = true;
+      const label = syncBtn.innerHTML;
+      syncBtn.innerHTML = '<span class="spinner"></span>Syncing to AutoCAD…';
+      syncMsg.classList.add('hidden');
+
+      try {
+        const res = await fetch('/api/sync-autocad', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ rows: allRows })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          showSyncMsg(data.detail || data.error || 'Sync failed.', false);
+        } else {
+          showSyncMsg('Synced ' + (data.count ?? allRows.length) + ' rows into AutoCAD — check the open drawing.', true);
+        }
+      } catch (err) {
+        showSyncMsg('Sync failed: ' + err.message, false);
+      } finally {
+        syncBtn.disabled = false;
+        syncBtn.innerHTML = label;
+      }
+    });
+
+    // --- Clients, their tools, and view switching ---
+    // Add a client's tools here to make them appear in the tool-tab row.
+    const TOOLS = {
+      S2NERGY: [ { id: 'qc', label: 'QC Check' }, { id: 'mto', label: 'MTO Check' } ],
+      QATAR:   [ { id: 'booklet', label: 'Booklet' } ],
+      UAE:     [ { id: 'booklet', label: 'Booklet' } ],
+      KBR:     [],
+    };
+
+    let selectedClient = null;
+    let activeView = 'qc';
+    const toolTabs = document.getElementById('toolTabs');
+
+    // Pick a client: highlight its tab, rebuild the tool row, open its first tool.
+    function selectClient(client) {
+      selectedClient = client;
+      document.querySelectorAll('#clientTabs .ctab').forEach(b => b.classList.toggle('active', b.dataset.client === client));
+      document.querySelectorAll('.client-tag').forEach(t => t.textContent = client);
+      renderToolTabs(client);
+      onClientSelected(client);
+    }
+
+    function renderToolTabs(client) {
+      const tools = TOOLS[client] || [];
+      toolTabs.innerHTML = '';
+      if (!tools.length) {
+        toolTabs.innerHTML = '<span class="no-tools">No tools yet for ' + client + '</span>';
+        switchView('empty');
+        return;
+      }
+      tools.forEach(t => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'ttab';
+        b.dataset.view = t.id;
+        b.textContent = t.label;
+        b.addEventListener('click', () => switchView(t.id));
+        toolTabs.appendChild(b);
+      });
+      // Keep the current tool if this client offers it, else use the first one.
+      const keep = tools.some(t => t.id === activeView) ? activeView : tools[0].id;
+      switchView(keep);
+    }
+
+    function switchView(view) {
+      if (!document.getElementById('view-' + view)) view = 'empty';
+      activeView = view;
+      document.querySelectorAll('.view').forEach(v => v.classList.add('hidden'));
+      document.getElementById('view-' + view).classList.remove('hidden');
+      document.querySelectorAll('#toolTabs .ttab').forEach(b => b.classList.toggle('active', b.dataset.view === view));
+    }
+
+    document.querySelectorAll('#clientTabs .ctab').forEach(btn => {
+      btn.addEventListener('click', () => selectClient(btn.dataset.client));
+    });
+
+    // Hook: extend this to load client-specific behaviour when a client is picked.
+    function onClientSelected(client) {
+      console.log('Client selected:', client);
+    }
+
+    // Default: S2NERGY → QC Check.
+    selectClient('S2NERGY');
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 18
+VisualStudioVersion = 18.6.11822.322 stable
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DrawingQC", "DrawingQC.csproj", "{FAB85BED-6B30-3EBD-4026-CF2A07C6F4DB}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{FAB85BED-6B30-3EBD-4026-CF2A07C6F4DB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FAB85BED-6B30-3EBD-4026-CF2A07C6F4DB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FAB85BED-6B30-3EBD-4026-CF2A07C6F4DB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FAB85BED-6B30-3EBD-4026-CF2A07C6F4DB}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {D68102D0-223B-4495-B035-4D265C4FE994}
+	EndGlobalSection
+EndGlobal

@@ -4,6 +4,6 @@ services:
     runtime: docker
     plan: free
     dockerfilePath: ./DrawingQC.Web/Dockerfile
-    dockerContext: ./DrawingQC.Web
-    healthCheckPath: /health
+    dockerContext: .
+    healthCheckPath: /
     autoDeploy: true

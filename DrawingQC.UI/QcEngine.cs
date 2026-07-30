@@ -126,7 +126,7 @@ public static class QcEngine
         using var wb = new XLWorkbook();
         var ws = wb.AddWorksheet("Drawing QC");
 
-        string[] headers = { "Sr.No", "Support PDF", "1st drawing name", "2nd drawing name", "Status", "Not found in PDF" };
+        string[] headers = { "Sr.No", "Support PDF", "1st drawing name", "2nd drawing name", "Status" };
         for (int c = 0; c < headers.Length; c++)
         {
             var cell = ws.Cell(1, c + 1);
@@ -152,7 +152,6 @@ public static class QcEngine
             ws.Cell(row, 3).Value = string.IsNullOrWhiteSpace(r.Drawing1) ? "-" : r.Drawing1;
             ws.Cell(row, 4).Value = string.IsNullOrWhiteSpace(r.Drawing2) ? "-" : r.Drawing2;
             ws.Cell(row, 5).Value = r.FinalStatus;
-            ws.Cell(row, 6).Value = string.IsNullOrWhiteSpace(r.NotFoundInPdf) ? "-" : r.NotFoundInPdf;
 
             XLColor fill, font;
             switch (r.FinalStatus)
@@ -174,7 +173,6 @@ public static class QcEngine
         ws.Column(3).Width = 24;
         ws.Column(4).Width = 24;
         ws.Column(5).Width = 14;
-        ws.Column(6).Width = 26;
 
         var sum = wb.AddWorksheet("Summary");
         sum.Cell(1, 1).Value = "Drawing QC Summary";
@@ -212,25 +210,12 @@ public sealed class PdfResult
     public string? Error { get; set; }
     public bool IsDuplicate { get; set; }
 
-    // Matched only when EVERY drawing named in the file name is found inside the PDF.
-    // If the 1st drawing name matches the PDF but the 2nd does not (or vice-versa),
-    // the status is Unmatched.
-    public bool IsMatch
-    {
-        get
-        {
-            if (Error != null) return false;
-            var named = DrawingKeys.Where(k => !string.IsNullOrWhiteSpace(k)).ToList();
-            return named.Count > 0 && named.All(ContentNumbers.Contains);
-        }
-    }
+    public bool IsMatch =>
+        Error == null &&
+        NameNumbers.Count > 0 &&
+        NameNumbers.SetEquals(ContentNumbers);
 
     // Duplicate takes priority so repeated drawings surface even if they otherwise match.
     public string FinalStatus =>
         IsDuplicate ? "Duplicate" : (IsMatch ? "Matched" : "Unmatched");
-
-    // Drawing names promised by the file name but not actually printed inside the PDF.
-    public string NotFoundInPdf =>
-        string.Join(", ", DrawingKeys
-            .Where(k => !string.IsNullOrWhiteSpace(k) && !ContentNumbers.Contains(k)));
 }
