@@ -371,12 +371,77 @@
        <h1>Booklet</h1>
        <p class="sub"><span class="client-tag">—</span> Assemble drawings into a booklet.</p>
      </div>
-     <section class="panel placeholder">
-       <span class="ph-ic">
-         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v15"/><path d="M12 5a4 4 0 0 0-4-2H3v14h5a4 4 0 0 1 4 2"/><path d="M12 5a4 4 0 0 1 4-2h5v14h-5a4 4 0 0 0-4 2"/></svg>
-       </span>
-       <h2>Booklet is set up</h2>
-       <p>This tool is wired into the workspace and ready for its logic. Tell me what the Booklet tool should do — the inputs it takes and the output you expect — and I'll build it out.</p>
+     <section class="panel bk">
+       <style>
+         #view-booklet .bk-note { color: var(--muted); font-size: 13px; margin: 0 0 18px; line-height: 1.5; }
+         #view-booklet .bk-subhead { font-size: 13px; font-weight: 700; color: var(--ink); margin: 4px 0 12px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+         #view-booklet .bk-subhead span { font-weight: 400; color: var(--faint); }
+         #view-booklet .bk-file:last-of-type { margin-bottom: 4px; }
+         #view-booklet .bk-grid { margin-bottom: 22px; }
+         #view-booklet .bk-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 18px; }
+         #view-booklet .bk-field { display: flex; flex-direction: column; gap: 6px; }
+         #view-booklet .bk-field > span, #view-booklet .bk-lbl { font-size: 13px; font-weight: 600; color: var(--muted); }
+         #view-booklet input[type=text] { border: 1px solid var(--border); border-radius: 8px; padding: 9px 11px; font: inherit; font-size: 14px; color: var(--ink); background: #fff; width: 100%; }
+         #view-booklet input[type=text]:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(79,70,229,.12); }
+         #view-booklet .bk-file { margin-bottom: 15px; }
+         #view-booklet .bk-lbl { display: block; margin-bottom: 6px; }
+         #view-booklet .bk-row { display: flex; gap: 10px; align-items: center; }
+         #view-booklet .bk-row input[type=text] { flex: 1; }
+         #view-booklet .bk-or { color: var(--faint); font-size: 12px; }
+         #view-booklet .bk-choose { display: inline-block; background: #64748b; color: #fff; border: 1px solid #64748b; border-radius: 8px; padding: 8px 14px; font-size: 13px; cursor: pointer; white-space: nowrap; }
+         #view-booklet .bk-choose:hover { background: #4b5563; border-color: #4b5563; }
+         #view-booklet .msg { padding: 12px 14px; border-radius: 8px; font-size: 14px; margin-top: 14px; line-height: 1.5; }
+         #view-booklet .msg.ok { background: var(--match-bg); color: var(--match-fg); }
+         #view-booklet .msg.ok a { color: inherit; font-weight: 700; }
+       </style>
+
+       <p class="bk-note">Fills the <b>revision block</b> (below) and the Appendix A table (from the Excel, 45 rows/page) into the Word template, then appends the drawings PDF after Appendix B — producing one merged PDF. Runs on the local Windows app (needs Microsoft Word). Provide each file as a path <i>or</i> upload it.</p>
+
+       <div class="bk-subhead">Revision block <span>— filled into the cover approval table &amp; page headers</span></div>
+       <div class="bk-grid">
+         <label class="bk-field"><span>Rev</span><input type="text" id="bk-rev" value="00"></label>
+         <label class="bk-field"><span>Date</span><input type="text" id="bk-date"></label>
+         <label class="bk-field"><span>Description of Revision</span><input type="text" id="bk-description" value="Issued for Construction"></label>
+         <label class="bk-field"><span>Prepared</span><input type="text" id="bk-prepared" value="Kalpesh"></label>
+         <label class="bk-field"><span>Verified</span><input type="text" id="bk-verified" value="Hareesha"></label>
+         <label class="bk-field"><span>Approved (Discipline Leader)</span><input type="text" id="bk-approved" value="Anand Kumar Vishwakarma"></label>
+       </div>
+
+       <div class="bk-subhead">Files</div>
+       <div class="bk-file">
+         <label class="bk-lbl">Word template (.docx)</label>
+         <div class="bk-row">
+           <input type="text" id="bk-template-path" placeholder="Paste full path to the .docx, or choose a file →">
+           <span class="bk-or">or</span>
+           <label class="bk-choose">Choose File<input type="file" id="bk-template-file" accept=".docx" hidden></label>
+         </div>
+       </div>
+
+       <div class="bk-file">
+         <label class="bk-lbl">Excel data (.xlsx)</label>
+         <div class="bk-row">
+           <input type="text" id="bk-excel-path" placeholder="Paste full path to the .xlsx, or choose a file →">
+           <span class="bk-or">or</span>
+           <label class="bk-choose">Choose File<input type="file" id="bk-excel-file" accept=".xlsx" hidden></label>
+         </div>
+       </div>
+
+       <div class="bk-file">
+         <label class="bk-lbl">Drawings PDF (Appendix B)</label>
+         <div class="bk-row">
+           <input type="text" id="bk-drawings-path" placeholder="Paste full path to the drawings .pdf, or choose a file →">
+           <span class="bk-or">or</span>
+           <label class="bk-choose">Choose File<input type="file" id="bk-drawings-file" accept=".pdf" hidden></label>
+         </div>
+       </div>
+
+       <div class="bar">
+         <button id="bk-run">Generate booklet</button>
+         <button id="bk-download" class="hidden">⬇ Download booklet</button>
+         <span class="fname" id="bk-status">Ready</span>
+       </div>
+       <div id="bk-error" class="msg err hidden"></div>
+       <div id="bk-result" class="msg ok hidden"></div>
      </section>
    </div><!-- /view-booklet -->
 
@@ -526,7 +591,7 @@
     // Add a client's tools here to make them appear in the tool-tab row.
     const TOOLS = {
       S2NERGY: [ { id: 'qc', label: 'QC Check' }, { id: 'mto', label: 'MTO Check' } ],
-      QATAR:   [ { id: 'booklet', label: 'Booklet' } ],
+      QATAR:   [],
       UAE:     [ { id: 'booklet', label: 'Booklet' } ],
       KBR:     [],
     };
@@ -585,6 +650,119 @@
 
     // Default: S2NERGY → QC Check.
     selectClient('S2NERGY');
+
+    // --- Booklet tool (QATAR): fill Word template + append drawings -> merged PDF ---
+    const bkRun = document.getElementById('bk-run');
+    if (bkRun) {
+      const bkStatus = document.getElementById('bk-status');
+      const bkError = document.getElementById('bk-error');
+      const bkResult = document.getElementById('bk-result');
+      const bkVal = id => (document.getElementById(id).value || '').trim();
+
+      // Default the Date field to today (dd-MM-yyyy) so it's never blank.
+      (() => {
+        const d = document.getElementById('bk-date');
+        if (d && !d.value) {
+          const t = new Date(), p = n => String(n).padStart(2, '0');
+          d.value = `${p(t.getDate())}-${p(t.getMonth() + 1)}-${t.getFullYear()}`;
+        }
+      })();
+
+      const bkAttach = (fd, name) => {
+        const file = document.getElementById('bk-' + name + '-file').files[0];
+        const path = bkVal('bk-' + name + '-path');
+        if (file) { fd.append(name + 'File', file); return true; }
+        if (path) { fd.append(name + 'Path', path); return true; }
+        return false;
+      };
+
+      // Suggested download file name, based on the chosen template.
+      const bkSuggestedName = () => {
+        const tf = document.getElementById('bk-template-file').files[0];
+        const tp = bkVal('bk-template-path');
+        let base = tf ? tf.name : (tp ? tp.split(/[\\/]/).pop() : '');
+        base = base.replace(/\.docx$/i, '');
+        return (base ? base + ' - Booklet' : 'Booklet') + '.pdf';
+      };
+
+      // When a file is picked via "Choose File", show its name in the path field.
+      ['template', 'excel', 'drawings'].forEach(name => {
+        const fi = document.getElementById('bk-' + name + '-file');
+        if (fi) fi.addEventListener('change', () => {
+          const f = fi.files[0];
+          if (f) document.getElementById('bk-' + name + '-path').value = f.name;
+        });
+      });
+
+      // Download button (shown after a successful generation).
+      const bkDownload = document.getElementById('bk-download');
+      let bkDownloadName = 'Booklet.pdf';
+      bkDownload.addEventListener('click', () => {
+        // Download straight to the browser's Downloads folder.
+        const a = document.createElement('a');
+        a.href = '/api/booklet/download';
+        a.download = bkDownloadName;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        bkStatus.textContent = 'Downloading to your Downloads folder…';
+      });
+
+      bkRun.addEventListener('click', async () => {
+        bkError.classList.add('hidden');
+        bkResult.classList.add('hidden');
+        bkDownload.classList.add('hidden');
+
+        const fd = new FormData();
+        fd.append('rev', bkVal('bk-rev'));
+        fd.append('date', bkVal('bk-date'));
+        fd.append('description', bkVal('bk-description'));
+        fd.append('prepared', bkVal('bk-prepared'));
+        fd.append('verified', bkVal('bk-verified'));
+        fd.append('approved', bkVal('bk-approved'));
+
+        if (!bkVal('bk-date')) {
+          bkError.textContent = 'Please enter the Date (it fills into the headers and cover).';
+          bkError.classList.remove('hidden');
+          return;
+        }
+
+        const haveAll = ['template', 'excel', 'drawings'].map(n => bkAttach(fd, n)).every(Boolean);
+        if (!haveAll) {
+          bkError.textContent = 'Please provide the Template, Excel and Drawings PDF (each as a path or an upload).';
+          bkError.classList.remove('hidden');
+          return;
+        }
+
+        bkRun.disabled = true;
+        bkRun.innerHTML = '<span class="spinner"></span>Generating…';
+        bkStatus.textContent = 'Filling template, converting to PDF and merging drawings… this can take a minute.';
+
+        try {
+          const res = await fetch('/api/booklet', { method: 'POST', body: fd });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            bkError.textContent = data.detail || data.error || 'Booklet generation failed.';
+            bkError.classList.remove('hidden');
+            bkStatus.textContent = 'Failed.';
+            return;
+          }
+
+          bkDownloadName = bkSuggestedName();
+          bkResult.innerHTML = '✓ Booklet generated successfully (' + data.sizeMB + ' MB).';
+          bkResult.classList.remove('hidden');
+          bkDownload.classList.remove('hidden');
+          bkStatus.textContent = 'Done.';
+        } catch (err) {
+          bkError.textContent = 'Request failed: ' + err.message;
+          bkError.classList.remove('hidden');
+          bkStatus.textContent = 'Failed.';
+        } finally {
+          bkRun.disabled = false;
+          bkRun.textContent = 'Generate booklet';
+        }
+      });
+    }
 
     function escapeHtml(s) {
       return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));

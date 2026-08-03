@@ -148,4 +148,92 @@ app.MapPost("/api/sync-autocad", async (HttpRequest request) =>
     }
 });
 
+// ---------- Booklet tool (QATAR): fill Word template + append drawings -> merged PDF ----------
+string? lastBooklet = null;
+
+app.MapPost("/api/booklet", async (HttpRequest request) =>
+{
+    if (!OperatingSystem.IsWindows())
+        return Results.Problem("Booklet generation is only available on the local Windows app (it needs Microsoft Word installed).");
+    if (!request.HasFormContentType)
+        return Results.BadRequest(new { error = "Expected a multipart form." });
+
+    var form = await request.ReadFormAsync();
+    var temps = new List<string>();
+    try
+    {
+        string rev = form["rev"].ToString().Trim();
+        string date = form["date"].ToString().Trim();
+        string description = form["description"].ToString().Trim();
+        string prepared = form["prepared"].ToString().Trim();
+        string verified = form["verified"].ToString().Trim();
+        string approved = form["approved"].ToString().Trim();
+        string sheet = form["sheet"].ToString().Trim();
+        string outputPath = form["outputPath"].ToString().Trim().Trim('"');
+        // Where the merged PDF is written: an explicit path wins; otherwise a temp file that
+        // the user grabs via the "Download booklet" button.
+        string? resolvedOutput = !string.IsNullOrWhiteSpace(outputPath)
+            ? outputPath
+            : Path.Combine(Path.GetTempPath(), $"booklet_out_{Guid.NewGuid():N}.pdf");
+
+        string template = await ResolveBookletInput(form, "template", ".docx", temps);
+        string excel = await ResolveBookletInput(form, "excel", ".xlsx", temps);
+        string drawings = await ResolveBookletInput(form, "drawings", ".pdf", temps);
+
+        string outPdf = await Task.Run(() => DrawingQC.Web.BookletBuilder.Build(new DrawingQC.Web.BookletInputs
+        {
+            TemplatePath = template,
+            ExcelPath = excel,
+            DrawingsPath = drawings,
+            Sheet = string.IsNullOrWhiteSpace(sheet) ? null : sheet,
+            Rev = rev,
+            Date = date,
+            Description = description,
+            Prepared = prepared,
+            Verified = verified,
+            Approved = approved,
+            OutputPath = resolvedOutput,
+        }));
+
+        lastBooklet = outPdf;
+        var info = new FileInfo(outPdf);
+        return Results.Ok(new
+        {
+            ok = true,
+            outputPath = outPdf,
+            fileName = Path.GetFileName(outPdf),
+            savedToTemp = string.IsNullOrWhiteSpace(outputPath),
+            sizeMB = Math.Round(info.Length / 1024.0 / 1024.0, 1),
+        });
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem(ex.Message);
+    }
+    finally
+    {
+        foreach (var t in temps) { try { File.Delete(t); } catch { } }
+    }
+});
+
+app.MapGet("/api/booklet/download", () =>
+    lastBooklet is not null && File.Exists(lastBooklet)
+        ? Results.File(lastBooklet, "application/pdf", Path.GetFileName(lastBooklet))
+        : Results.NotFound());
+
 app.Run();
+
+// An input may arrive as an uploaded file (<name>File) or as a local path (<name>Path).
+static async Task<string> ResolveBookletInput(IFormCollection form, string name, string ext, List<string> temps)
+{
+    var file = form.Files.GetFile(name + "File");
+    if (file is not null && file.Length > 0)
+    {
+        string tmp = Path.Combine(Path.GetTempPath(), $"booklet_{name}_{Guid.NewGuid():N}{ext}");
+        await using var fs = File.Create(tmp);
+        await file.CopyToAsync(fs);
+        temps.Add(tmp);
+        return tmp;
+    }
+    return form[name + "Path"].ToString().Trim().Trim('"');
+}
