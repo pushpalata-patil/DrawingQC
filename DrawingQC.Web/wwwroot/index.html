@@ -399,12 +399,12 @@
 
        <div class="bk-subhead">Revision block <span>— filled into the cover approval table &amp; page headers</span></div>
        <div class="bk-grid">
-         <label class="bk-field"><span>Rev</span><input type="text" id="bk-rev" value="00"></label>
-         <label class="bk-field"><span>Date</span><input type="text" id="bk-date"></label>
-         <label class="bk-field"><span>Description of Revision</span><input type="text" id="bk-description" value="Issued for Construction"></label>
-         <label class="bk-field"><span>Prepared</span><input type="text" id="bk-prepared" value="Kalpesh"></label>
-         <label class="bk-field"><span>Verified</span><input type="text" id="bk-verified" value="Hareesha"></label>
-         <label class="bk-field"><span>Approved (Discipline Leader)</span><input type="text" id="bk-approved" value="Anand Kumar Vishwakarma"></label>
+         <label class="bk-field"><span>Rev</span><input type="text" id="bk-rev" placeholder="00"></label>
+         <label class="bk-field"><span>Date</span><input type="text" id="bk-date" placeholder="dd-mm-yyyy"></label>
+         <label class="bk-field"><span>Description of Revision</span><input type="text" id="bk-description" placeholder="e.g. Issued for Construction"></label>
+         <label class="bk-field"><span>Prepared</span><input type="text" id="bk-prepared"></label>
+         <label class="bk-field"><span>Verified</span><input type="text" id="bk-verified"></label>
+         <label class="bk-field"><span>Approved (Discipline Leader)</span><input type="text" id="bk-approved"></label>
        </div>
 
        <div class="bk-subhead">Files</div>
@@ -658,15 +658,6 @@
       const bkError = document.getElementById('bk-error');
       const bkResult = document.getElementById('bk-result');
       const bkVal = id => (document.getElementById(id).value || '').trim();
-
-      // Default the Date field to today (dd-MM-yyyy) so it's never blank.
-      (() => {
-        const d = document.getElementById('bk-date');
-        if (d && !d.value) {
-          const t = new Date(), p = n => String(n).padStart(2, '0');
-          d.value = `${p(t.getDate())}-${p(t.getMonth() + 1)}-${t.getFullYear()}`;
-        }
-      })();
 
       const bkAttach = (fd, name) => {
         const file = document.getElementById('bk-' + name + '-file').files[0];
