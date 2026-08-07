@@ -149,7 +149,8 @@ app.MapPost("/api/sync-autocad", async (HttpRequest request) =>
 });
 
 // ---------- Booklet tool (QATAR): fill Word template + append drawings -> merged PDF ----------
-string? lastBooklet = null;
+string? lastBookletPdf = null;
+string? lastBookletDocx = null;
 
 app.MapPost("/api/booklet", async (HttpRequest request) =>
 {
@@ -179,12 +180,14 @@ app.MapPost("/api/booklet", async (HttpRequest request) =>
         string template = await ResolveBookletInput(form, "template", ".docx", temps);
         string excel = await ResolveBookletInput(form, "excel", ".xlsx", temps);
         string drawings = await ResolveBookletInput(form, "drawings", ".pdf", temps);
+        string bom = await ResolveBookletInput(form, "bom", ".xlsx", temps); // optional
 
-        string outPdf = await Task.Run(() => DrawingQC.Web.BookletBuilder.Build(new DrawingQC.Web.BookletInputs
+        var result = await Task.Run(() => DrawingQC.Web.BookletBuilder.Build(new DrawingQC.Web.BookletInputs
         {
             TemplatePath = template,
             ExcelPath = excel,
             DrawingsPath = drawings,
+            BomPath = string.IsNullOrWhiteSpace(bom) ? null : bom,
             Sheet = string.IsNullOrWhiteSpace(sheet) ? null : sheet,
             Rev = rev,
             Date = date,
@@ -195,13 +198,15 @@ app.MapPost("/api/booklet", async (HttpRequest request) =>
             OutputPath = resolvedOutput,
         }));
 
-        lastBooklet = outPdf;
-        var info = new FileInfo(outPdf);
+        lastBookletPdf = result.PdfPath;
+        lastBookletDocx = result.DocxPath;
+        var info = new FileInfo(result.PdfPath);
         return Results.Ok(new
         {
             ok = true,
-            outputPath = outPdf,
-            fileName = Path.GetFileName(outPdf),
+            outputPath = result.PdfPath,
+            fileName = Path.GetFileName(result.PdfPath),
+            docxFileName = Path.GetFileName(result.DocxPath),
             savedToTemp = string.IsNullOrWhiteSpace(outputPath),
             sizeMB = Math.Round(info.Length / 1024.0 / 1024.0, 1),
         });
@@ -216,10 +221,17 @@ app.MapPost("/api/booklet", async (HttpRequest request) =>
     }
 });
 
-app.MapGet("/api/booklet/download", () =>
-    lastBooklet is not null && File.Exists(lastBooklet)
-        ? Results.File(lastBooklet, "application/pdf", Path.GetFileName(lastBooklet))
-        : Results.NotFound());
+app.MapGet("/api/booklet/download", (string? format) =>
+{
+    bool word = string.Equals(format, "word", StringComparison.OrdinalIgnoreCase)
+             || string.Equals(format, "docx", StringComparison.OrdinalIgnoreCase);
+    string? path = word ? lastBookletDocx : lastBookletPdf;
+    if (path is null || !File.Exists(path)) return Results.NotFound();
+    string ctype = word
+        ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        : "application/pdf";
+    return Results.File(path, ctype, Path.GetFileName(path));
+});
 
 app.Run();
 

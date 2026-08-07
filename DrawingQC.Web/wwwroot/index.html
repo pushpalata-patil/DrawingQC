@@ -435,9 +435,19 @@
          </div>
        </div>
 
+       <div class="bk-file">
+         <label class="bk-lbl">Material Statistics for Released Supports (.xlsx) <span style="font-weight:400;color:var(--faint)">— optional</span></label>
+         <div class="bk-row">
+           <input type="text" id="bk-bom-path" placeholder="Paste full path to the material statistics .xlsx, or choose a file →">
+           <span class="bk-or">or</span>
+           <label class="bk-choose">Choose File<input type="file" id="bk-bom-file" accept=".xlsx" hidden></label>
+         </div>
+       </div>
+
        <div class="bar">
          <button id="bk-run">Generate booklet</button>
-         <button id="bk-download" class="hidden">⬇ Download booklet</button>
+         <button id="bk-download" class="hidden">⬇ Download PDF</button>
+         <button id="bk-download-word" class="hidden">⬇ Download Word</button>
          <span class="fname" id="bk-status">Ready</span>
        </div>
        <div id="bk-error" class="msg err hidden"></div>
@@ -668,16 +678,16 @@
       };
 
       // Suggested download file name, based on the chosen template.
-      const bkSuggestedName = () => {
+      const bkSuggestedBase = () => {
         const tf = document.getElementById('bk-template-file').files[0];
         const tp = bkVal('bk-template-path');
         let base = tf ? tf.name : (tp ? tp.split(/[\\/]/).pop() : '');
         base = base.replace(/\.docx$/i, '');
-        return (base ? base + ' - Booklet' : 'Booklet') + '.pdf';
+        return base ? base + ' - Booklet' : 'Booklet';
       };
 
       // When a file is picked via "Choose File", show its name in the path field.
-      ['template', 'excel', 'drawings'].forEach(name => {
+      ['template', 'excel', 'drawings', 'bom'].forEach(name => {
         const fi = document.getElementById('bk-' + name + '-file');
         if (fi) fi.addEventListener('change', () => {
           const f = fi.files[0];
@@ -685,24 +695,28 @@
         });
       });
 
-      // Download button (shown after a successful generation).
+      // Download buttons (shown after a successful generation).
       const bkDownload = document.getElementById('bk-download');
-      let bkDownloadName = 'Booklet.pdf';
-      bkDownload.addEventListener('click', () => {
+      const bkDownloadWord = document.getElementById('bk-download-word');
+      let bkDownloadBase = 'Booklet';
+      const bkGrab = (format, ext) => {
         // Download straight to the browser's Downloads folder.
         const a = document.createElement('a');
-        a.href = '/api/booklet/download';
-        a.download = bkDownloadName;
+        a.href = '/api/booklet/download?format=' + format;
+        a.download = bkDownloadBase + ext;
         document.body.appendChild(a);
         a.click();
         a.remove();
         bkStatus.textContent = 'Downloading to your Downloads folder…';
-      });
+      };
+      bkDownload.addEventListener('click', () => bkGrab('pdf', '.pdf'));
+      bkDownloadWord.addEventListener('click', () => bkGrab('word', '.docx'));
 
       bkRun.addEventListener('click', async () => {
         bkError.classList.add('hidden');
         bkResult.classList.add('hidden');
         bkDownload.classList.add('hidden');
+        bkDownloadWord.classList.add('hidden');
 
         const fd = new FormData();
         fd.append('rev', bkVal('bk-rev'));
@@ -718,6 +732,7 @@
           return;
         }
 
+        bkAttach(fd, 'bom'); // optional Material Statistics Excel
         const haveAll = ['template', 'excel', 'drawings'].map(n => bkAttach(fd, n)).every(Boolean);
         if (!haveAll) {
           bkError.textContent = 'Please provide the Template, Excel and Drawings PDF (each as a path or an upload).';
@@ -739,10 +754,11 @@
             return;
           }
 
-          bkDownloadName = bkSuggestedName();
-          bkResult.innerHTML = '✓ Booklet generated successfully (' + data.sizeMB + ' MB).';
+          bkDownloadBase = bkSuggestedBase();
+          bkResult.innerHTML = '✓ Booklet generated successfully (' + data.sizeMB + ' MB). Download as PDF or Word.';
           bkResult.classList.remove('hidden');
           bkDownload.classList.remove('hidden');
+          bkDownloadWord.classList.remove('hidden');
           bkStatus.textContent = 'Done.';
         } catch (err) {
           bkError.textContent = 'Request failed: ' + err.message;
