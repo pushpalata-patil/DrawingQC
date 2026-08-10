@@ -28,10 +28,26 @@ app.UseStaticFiles();
 // ---------- Authentication: accounts, login/logout, profile ----------
 app.MapPost("/api/auth/register", (HttpContext ctx, RegisterDto dto) =>
 {
-    var (ok, err, user) = DrawingQC.Web.Auth.Register(dto.username, dto.email, dto.password, dto.name, dto.role);
+    var (ok, err, user) = DrawingQC.Web.Auth.Register(dto.username, dto.email, dto.password, dto.name, dto.role, dto.securityQuestion, dto.securityAnswer);
     if (!ok) return Results.BadRequest(new { error = err });
     SetSession(ctx, user!.Id, remember: true);
     return Results.Ok(new { user = DrawingQC.Web.Auth.Public(user) });
+});
+
+// Self-service password reset: enter email + a new password.
+app.MapPost("/api/auth/reset", (ResetDto dto) =>
+{
+    var (ok, err) = DrawingQC.Web.Auth.ResetPassword(dto.email, dto.password);
+    return ok ? Results.Ok(new { ok = true }) : Results.BadRequest(new { error = err });
+});
+
+app.MapPost("/api/auth/security", (HttpContext ctx, SecurityDto dto) =>
+{
+    var user = CurrentUser(ctx.Request);
+    if (user == null) return Results.Json(new { error = "Not signed in." }, statusCode: 401);
+    return DrawingQC.Web.Auth.SetSecurityQuestion(user.Id, dto.question, dto.answer)
+        ? Results.Ok(new { ok = true })
+        : Results.BadRequest(new { error = "Please provide both a question and an answer." });
 });
 
 app.MapPost("/api/auth/login", (HttpContext ctx, LoginDto dto) =>
@@ -366,7 +382,9 @@ static void ClearSession(HttpContext ctx) =>
         new CookieOptions { Expires = DateTimeOffset.UnixEpoch, Path = "/" });
 
 // ---------- Auth request bodies ----------
-record RegisterDto(string? username, string? email, string? password, string? name, string? role);
+record RegisterDto(string? username, string? email, string? password, string? name, string? role, string? securityQuestion, string? securityAnswer);
+record ResetDto(string? email, string? answer, string? password);
+record SecurityDto(string? question, string? answer);
 record LoginDto(string? login, string? password, bool remember);
 record ChangePwDto(string? current, string? next);
 record ProfileDto(string? name, string? email, string? role, string? avatar);

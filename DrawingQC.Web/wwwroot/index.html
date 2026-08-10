@@ -544,8 +544,7 @@
          <span class="prof-msg" id="pf-pwmsg"></span>
        </div>
 
-       <h3>Session</h3>
-       <div class="prof-actions">
+       <div class="prof-actions" style="margin-top:24px;border-top:1px solid var(--border);padding-top:20px">
          <button class="btn danger" id="pf-logout">Log out</button>
        </div>
      </div>
@@ -986,9 +985,8 @@
         <input type="password" id="li-pass" autocomplete="current-password">
         <div class="auth-row" style="justify-content:space-between">
           <label><input type="checkbox" id="li-remember" checked> Remember me</label>
-          <a onclick="authForgot()" style="color:var(--accent);font-weight:600;cursor:pointer">Forgot password?</a>
+          <a onclick="authShow('reset')" style="color:var(--accent);font-weight:600;cursor:pointer">Forgot password?</a>
         </div>
-        <div class="auth-note" id="li-note" style="display:none;margin-top:8px;font-size:12.5px;color:var(--muted);background:#f1f5f9;border-radius:8px;padding:9px 11px">Please contact your administrator to reset your password.</div>
         <div class="auth-err" id="li-err"></div>
         <button class="auth-btn" id="li-btn">Sign in</button>
         <div class="auth-switch" id="authRegLink">New here? <a onclick="authShow('register')">Create an account</a></div>
@@ -1008,6 +1006,18 @@
         <div class="auth-err" id="re-err"></div>
         <button class="auth-btn" id="re-btn">Create account</button>
         <div class="auth-switch">Already have an account? <a onclick="authShow('login')">Sign in</a></div>
+      </div>
+
+      <div id="authReset" class="hide">
+        <h2>Reset password</h2>
+        <p class="auth-sub">Enter your email and choose a new password.</p>
+        <label>Email</label>
+        <input type="email" id="rs-email" autocomplete="email">
+        <label>New password</label>
+        <input type="password" id="rs-newpass" autocomplete="new-password">
+        <div class="auth-err" id="rs-err"></div>
+        <button class="auth-btn" id="rs-submit">Reset password</button>
+        <div class="auth-switch">Remembered it? <a onclick="authShow('login')">Back to sign in</a></div>
       </div>
     </div>
   </div>
@@ -1035,8 +1045,12 @@
       window.authShow = function (which) {
         $('authLogin').classList.toggle('hide', which !== 'login');
         $('authRegister').classList.toggle('hide', which !== 'register');
-        $('li-err').style.display = 'none';
-        $('re-err').style.display = 'none';
+        $('authReset').classList.toggle('hide', which !== 'reset');
+        ['li-err', 're-err', 'rs-err'].forEach(id => { const e = $(id); if (e) e.style.display = 'none'; });
+        if (which === 'reset') {
+          $('rs-err').style.display = 'none';
+          $('rs-email').value = ''; $('rs-newpass').value = '';
+        }
       };
 
       function paintUser(u) {
@@ -1070,9 +1084,8 @@
         try { const r = await _fetch('/api/auth/config'); if (r.ok) { const d = await r.json(); const l = $('authRegLink'); if (l) l.style.display = d.registrationOpen ? '' : 'none'; } } catch (e) {}
       }
 
-      window.authForgot = () => { const n = $('li-note'); n.style.display = n.style.display === 'none' ? 'block' : 'none'; };
 
-      try { const s = localStorage.getItem('sa_login'); if (s) $('li-login').value = s; } catch (e) {}
+      try { localStorage.removeItem('sa_login'); } catch (e) {} // don't retain/prefill the email
 
       async function check() {
         try {
@@ -1084,14 +1097,13 @@
       const liBtn = $('li-btn');
       async function doLogin() {
         const login = $('li-login').value.trim(), pass = $('li-pass').value, remember = $('li-remember').checked;
-        const err = $('li-err'); err.style.display = 'none';
+        const err = $('li-err'); err.style.display = 'none'; err.style.background = ''; err.style.color = '';
         if (!login || !pass) { err.textContent = 'Enter your username and password.'; err.style.display = 'block'; return; }
         liBtn.disabled = true; liBtn.textContent = 'Signing in…';
         try {
           const r = await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ login, password: pass, remember }) });
           const d = await r.json().catch(() => ({}));
           if (!r.ok) { err.textContent = d.error || 'Sign in failed.'; err.style.display = 'block'; return; }
-          try { remember ? localStorage.setItem('sa_login', login) : localStorage.removeItem('sa_login'); } catch (e) {}
           $('li-pass').value = '';
           showApp(d.user);
         } catch (e) { err.textContent = 'Request failed: ' + e.message; err.style.display = 'block'; }
@@ -1109,10 +1121,31 @@
           const r = await fetch('/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
           const d = await r.json().catch(() => ({}));
           if (!r.ok) { err.textContent = d.error || 'Could not create account.'; err.style.display = 'block'; return; }
-          try { localStorage.setItem('sa_login', body.email); } catch (e) {}
           showApp(d.user);
         } catch (e) { err.textContent = 'Request failed: ' + e.message; err.style.display = 'block'; }
         finally { reBtn.disabled = false; reBtn.textContent = 'Create account'; }
+      });
+
+      // ---- Self-service password reset (email + new password) ----
+      $('rs-submit').addEventListener('click', async () => {
+        const email = $('rs-email').value.trim(), password = $('rs-newpass').value;
+        const err = $('rs-err'); err.style.display = 'none';
+        if (!email || !password) { err.textContent = 'Enter your email and a new password.'; err.style.display = 'block'; return; }
+        try {
+          const r = await _fetch('/api/auth/reset', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) });
+          const d = await r.json().catch(() => ({}));
+          if (!r.ok) { err.textContent = d.error || 'Reset failed.'; err.style.display = 'block'; return; }
+          // Sign in automatically with the just-set password so the browser's stale autofill
+          // can't get in the way.
+          try {
+            const lr = await _fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ login: email, password, remember: true }) });
+            const ld = await lr.json().catch(() => ({}));
+            if (lr.ok) { showApp(ld.user); return; }
+          } catch (e) {}
+          authShow('login');
+          $('li-login').value = email;
+          const le = $('li-err'); le.textContent = 'Password reset — sign in with your new password.'; le.style.display = 'block'; le.style.background = '#f0fdf4'; le.style.color = '#166534';
+        } catch (e) { err.textContent = 'Request failed: ' + e.message; err.style.display = 'block'; }
       });
 
       window.openProfile = function () {

@@ -15,6 +15,9 @@ public sealed class UserAccount
     public string PasswordHash { get; set; } = "";
     public string Salt { get; set; } = "";
     public string? Avatar { get; set; }            // small image as a data URL
+    public string? SecurityQuestion { get; set; }  // for self-service password reset
+    public string? SecurityAnswerHash { get; set; }
+    public string? SecurityAnswerSalt { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 
@@ -43,7 +46,21 @@ public static class Auth
         var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
         if (string.IsNullOrWhiteSpace(appData)) appData = AppContext.BaseDirectory; // fallback
         var dir = Path.Combine(appData, "SupportAutomation");
-        try { Directory.CreateDirectory(dir); } catch { }
+        try
+        {
+            Directory.CreateDirectory(dir);
+            // One-time migration: bring accounts over from the previous bin/App_Data location
+            // so upgrading (or a rebuild) never orphans existing users.
+            var legacy = Path.Combine(AppContext.BaseDirectory, "App_Data");
+            if (Directory.Exists(legacy))
+                foreach (var f in new[] { "users.json", "settings.json", "auth.key" })
+                {
+                    var src = Path.Combine(legacy, f);
+                    var dst = Path.Combine(dir, f);
+                    if (File.Exists(src) && !File.Exists(dst)) File.Copy(src, dst);
+                }
+        }
+        catch { }
         return dir;
     }
 
@@ -80,7 +97,7 @@ public static class Auth
 
     // ---------- registration / login ----------
 
-    public static (bool ok, string? error, UserAccount? user) Register(string? username, string? email, string? password, string? name, string? role)
+    public static (bool ok, string? error, UserAccount? user) Register(string? username, string? email, string? password, string? name, string? role, string? securityQuestion = null, string? securityAnswer = null)
     {
         username = (username ?? "").Trim();
         email = (email ?? "").Trim();
@@ -117,6 +134,13 @@ public static class Auth
             Salt = Convert.ToBase64String(salt),
             PasswordHash = Convert.ToBase64String(HashPassword(password!, salt)),
         };
+        if (!string.IsNullOrWhiteSpace(securityQuestion) && !string.IsNullOrWhiteSpace(securityAnswer))
+        {
+            var asalt = RandomNumberGenerator.GetBytes(16);
+            user.SecurityQuestion = securityQuestion.Trim();
+            user.SecurityAnswerSalt = Convert.ToBase64String(asalt);
+            user.SecurityAnswerHash = Convert.ToBase64String(HashAnswer(securityAnswer, asalt));
+        }
         users.Add(user);
         Save(users);
         return (true, null, user);
@@ -167,6 +191,67 @@ public static class Auth
 
     private static byte[] HashPassword(string password, byte[] salt) =>
         Rfc2898DeriveBytes.Pbkdf2(Encoding.UTF8.GetBytes(password), salt, 100_000, HashAlgorithmName.SHA256, 32);
+
+    // Security answers are matched case-insensitively and trimmed, then hashed like a password.
+    private static byte[] HashAnswer(string answer, byte[] salt) =>
+        Rfc2898DeriveBytes.Pbkdf2(Encoding.UTF8.GetBytes((answer ?? "").Trim().ToLowerInvariant()), salt, 100_000, HashAlgorithmName.SHA256, 32);
+
+    // ---------- self-service password reset (security question) ----------
+
+    public static string? GetSecurityQuestion(string? email)
+    {
+        var u = FindByLogin(email ?? "");
+        return (u != null && !string.IsNullOrEmpty(u.SecurityQuestion)) ? u.SecurityQuestion : null;
+    }
+
+    public static (bool ok, string? error) ResetWithAnswer(string? email, string? answer, string? newPassword)
+    {
+        if (string.IsNullOrEmpty(newPassword) || newPassword!.Length < 6) return (false, "New password must be at least 6 characters.");
+        var users = Load();
+        var u = users.FirstOrDefault(x =>
+            x.Email.Equals((email ?? "").Trim(), StringComparison.OrdinalIgnoreCase) ||
+            x.Username.Equals((email ?? "").Trim(), StringComparison.OrdinalIgnoreCase));
+        if (u == null || string.IsNullOrEmpty(u.SecurityAnswerHash) || string.IsNullOrEmpty(u.SecurityAnswerSalt))
+            return (false, "No security question is set for this account — please ask an administrator to reset it.");
+        var asalt = Convert.FromBase64String(u.SecurityAnswerSalt);
+        if (!CryptographicOperations.FixedTimeEquals(HashAnswer(answer ?? "", asalt), Convert.FromBase64String(u.SecurityAnswerHash)))
+            return (false, "That answer doesn't match our records.");
+        var salt = RandomNumberGenerator.GetBytes(16);
+        u.Salt = Convert.ToBase64String(salt);
+        u.PasswordHash = Convert.ToBase64String(HashPassword(newPassword!, salt));
+        Save(users);
+        return (true, null);
+    }
+
+    // Direct self-service reset: set a new password for the account with this email.
+    public static (bool ok, string? error) ResetPassword(string? email, string? newPassword)
+    {
+        if (string.IsNullOrEmpty(newPassword) || newPassword!.Length < 6) return (false, "New password must be at least 6 characters.");
+        var users = Load();
+        var u = users.FirstOrDefault(x =>
+            x.Email.Equals((email ?? "").Trim(), StringComparison.OrdinalIgnoreCase) ||
+            x.Username.Equals((email ?? "").Trim(), StringComparison.OrdinalIgnoreCase));
+        if (u == null) return (false, "No account found with that email.");
+        var salt = RandomNumberGenerator.GetBytes(16);
+        u.Salt = Convert.ToBase64String(salt);
+        u.PasswordHash = Convert.ToBase64String(HashPassword(newPassword!, salt));
+        Save(users);
+        return (true, null);
+    }
+
+    public static bool SetSecurityQuestion(string userId, string? question, string? answer)
+    {
+        if (string.IsNullOrWhiteSpace(question) || string.IsNullOrWhiteSpace(answer)) return false;
+        var users = Load();
+        var u = users.FirstOrDefault(x => x.Id == userId);
+        if (u == null) return false;
+        var asalt = RandomNumberGenerator.GetBytes(16);
+        u.SecurityQuestion = question.Trim();
+        u.SecurityAnswerSalt = Convert.ToBase64String(asalt);
+        u.SecurityAnswerHash = Convert.ToBase64String(HashAnswer(answer, asalt));
+        Save(users);
+        return true;
+    }
 
     // ---------- app settings (registration toggle) ----------
 
@@ -291,5 +376,6 @@ public static class Auth
         name = u.Name,
         role = u.Role,
         avatar = u.Avatar,
+        securityQuestion = u.SecurityQuestion,
     };
 }
