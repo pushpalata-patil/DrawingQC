@@ -35,7 +35,13 @@
       color: var(--sidebar-text);
       display: flex; flex-direction: column; padding: 22px 18px; z-index: 10;
     }
-    .brand { display: flex; align-items: center; gap: 11px; font-size: 17px; font-weight: 700; color: #fff; padding: 4px 6px 24px; }
+    .brand { display: flex; align-items: center; gap: 10px; font-size: 15px; font-weight: 700; color: #fff; padding: 4px 6px 24px; white-space: nowrap; }
+    /* Company logo pinned to the top-right corner on every page. Dark chip so the logo's
+       white "Inventive" text stays legible against the light content area. */
+    .corner-logo { position: absolute; top: 18px; right: 26px; z-index: 20;
+      background: linear-gradient(170deg,#1b1e3a 0%,#241a44 55%,#2b1840 100%);
+      padding: 8px 14px; border-radius: 12px; box-shadow: 0 8px 20px rgba(20,16,48,.18); }
+    .corner-logo img { display: block; max-width: 150px; max-height: 46px; object-fit: contain; }
     .brand .mark {
       width: 32px; height: 32px; border-radius: 9px; background: var(--grad);
       display: grid; place-items: center; color: #fff; flex-shrink: 0;
@@ -92,7 +98,7 @@
     .side-foot { margin-top: auto; padding: 14px 6px 2px; font-size: 11.5px; color: var(--sidebar-muted); line-height: 1.5; border-top: 1px solid var(--sidebar-2); }
 
     /* ---------- Main ---------- */
-    .main { margin-left: var(--sidebar-w); padding: 30px 40px 60px; }
+    .main { margin-left: var(--sidebar-w); padding: 30px 40px 60px; position: relative; }
     .mhead { margin-bottom: 24px; }
     .mhead h1 {
       margin: 0; font-size: 30px; font-weight: 800; letter-spacing: -.02em;
@@ -245,30 +251,43 @@
   <aside class="side">
     <div class="brand">
       <span class="mark">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h10l6 6v10a0 0 0 0 1 0 0H4z"/><path d="M14 4v6h6"/><path d="M8 14h8M8 17h5"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V15z"/></svg>
       </span>
-      Drawing QC
+      Support Automation
     </div>
 
     <nav class="nav">
-      <a class="nav-item active">
+      <a class="nav-item active" id="navWorkspace" onclick="showHome()">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z"/></svg>
         Workspace
       </a>
+      <a class="nav-item" id="adminNav" onclick="openAdmin()" style="display:none">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        User management
+      </a>
     </nav>
 
-    <div class="side-section">
+    <div class="side-section" id="statusKey">
       <div class="side-title">Status key</div>
       <div class="legend-row"><span class="swatch m"></span><span><b>Matched</b> — file name found on the sheet</span></div>
       <div class="legend-row"><span class="swatch u"></span><span><b>Unmatched</b> — no drawing number match</span></div>
       <div class="legend-row"><span class="swatch d"></span><span><b>Duplicate</b> — number seen on 2+ sheets</span></div>
     </div>
 
-    <div class="side-foot">PDF parsing runs server-side.<br>PdfPig + ClosedXML · exports .xlsx</div>
+    <div class="side-bottom">
+      <div class="side-user" id="sideUser" onclick="openProfile()" style="display:none">
+        <span class="su-avatar" id="suAvatar"></span>
+        <span class="su-meta"><span class="su-name" id="suName">—</span><span class="su-role" id="suRole"></span></span>
+      </div>
+      <div class="side-foot">PDF parsing runs server-side.<br>PdfPig + ClosedXML · exports .xlsx</div>
+    </div>
   </aside>
 
   <main class="main">
-   <div class="toolbar">
+   <div class="corner-logo" id="cornerLogo">
+     <img src="/logo.png" alt="Company logo" onerror="this.parentElement.style.display='none'">
+   </div>
+   <div class="toolbar" id="toolbar">
      <div class="tabs-row client-tabs" id="clientTabs">
        <button type="button" class="ctab" data-client="S2NERGY">S2NERGY</button>
        <button type="button" class="ctab" data-client="QATAR">QATAR</button>
@@ -278,7 +297,32 @@
      <div class="tabs-row tool-tabs" id="toolTabs"></div>
    </div>
 
-   <div id="view-qc" class="view">
+   <div id="view-home" class="view">
+     <style>
+       #view-home .home-wrap { display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; min-height:64vh; gap:14px; padding:20px; }
+       #view-home .home-logo-card { background:linear-gradient(170deg,#1b1e3a 0%,#241a44 55%,#2b1840 100%); padding:16px 24px; border-radius:16px; box-shadow:0 12px 28px rgba(20,16,48,.20); margin-bottom:8px; }
+       #view-home .home-logo { display:block; max-width:220px; max-height:110px; object-fit:contain; }
+       #view-home .home-badge { width:74px; height:74px; border-radius:18px; align-items:center; justify-content:center; background:linear-gradient(135deg,#6366f1,#4f46e5); color:#fff; box-shadow:0 10px 24px rgba(79,70,229,.28); margin-bottom:6px; }
+       #view-home .home-badge svg { width:38px; height:38px; }
+       #view-home .home-title { font-size:30px; font-weight:800; color:var(--ink); margin:0; letter-spacing:-.5px; }
+       #view-home .home-sub { color:var(--muted); font-size:15px; margin:0; max-width:480px; line-height:1.55; }
+       #view-home .home-hint { margin-top:8px; font-size:13px; color:var(--faint); }
+     </style>
+     <div class="home-wrap">
+       <!-- Company logo: drop a file named "logo.png" into wwwroot to show it here. -->
+       <div class="home-logo-card" id="homeLogoCard">
+         <img id="companyLogo" class="home-logo" src="/logo.png" alt="Company logo" onerror="document.getElementById('homeLogoCard').style.display='none'; document.getElementById('homeBadge').style.display='flex';">
+       </div>
+       <span class="home-badge" id="homeBadge" style="display:none">
+         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h10l6 6v10a0 0 0 0 1 0 0H4z"/><path d="M14 4v6h6"/><path d="M8 14h8M8 17h5"/></svg>
+       </span>
+       <h1 class="home-title">Welcome to Support Automation</h1>
+       <p class="home-sub">Select a client above — S2NERGY, QATAR, UAE or KBR — to open its tools.</p>
+       <p class="home-hint">Your workspace is ready.</p>
+     </div>
+   </div><!-- /view-home -->
+
+   <div id="view-qc" class="view hidden">
     <div class="mhead">
       <h1>QC Check</h1>
       <p class="sub"><span class="client-tag" id="qc-client">S2NERGY</span> Upload a .zip of drawing PDFs and generate the QC register.</p>
@@ -468,6 +512,75 @@
        <p>This client is set up but has no tools configured. Tell me which tools it should have and I'll add them, just like S2NERGY.</p>
      </section>
    </div><!-- /view-empty -->
+
+   <div id="view-profile" class="view hidden">
+     <div class="mhead"><h1>My Profile</h1><p class="sub">Manage your account details.</p></div>
+     <div class="prof-card">
+       <div class="prof-head">
+         <span class="prof-av" id="pf-av"></span>
+         <div>
+           <h2 id="pf-title">—</h2>
+           <p id="pf-subtitle">—</p>
+           <label class="btn ghost" style="display:inline-block;margin-top:8px;cursor:pointer;padding:6px 12px;font-size:13px">Change photo<input type="file" id="pf-photo" accept="image/*" hidden></label>
+         </div>
+       </div>
+       <div class="prof-grid">
+         <div class="pf"><label>Full name</label><input type="text" id="pf-name"></div>
+         <div class="pf"><label>Role</label><select id="pf-role"></select></div>
+         <div class="pf full"><label>Email</label><input type="email" id="pf-email"></div>
+       </div>
+       <div class="prof-actions">
+         <button class="btn" id="pf-save">Save changes</button>
+         <span class="prof-msg" id="pf-msg"></span>
+       </div>
+
+       <h3>Change password</h3>
+       <div class="prof-grid">
+         <div class="pf"><label>Current password</label><input type="password" id="pf-cur" autocomplete="current-password"></div>
+         <div class="pf"><label>New password</label><input type="password" id="pf-new" autocomplete="new-password"></div>
+       </div>
+       <div class="prof-actions">
+         <button class="btn" id="pf-pwbtn">Update password</button>
+         <span class="prof-msg" id="pf-pwmsg"></span>
+       </div>
+
+       <h3>Session</h3>
+       <div class="prof-actions">
+         <button class="btn danger" id="pf-logout">Log out</button>
+       </div>
+     </div>
+   </div><!-- /view-profile -->
+
+   <div id="view-admin" class="view hidden">
+     <style>
+       #view-admin .admin-card { background:#fff; border:1px solid var(--border); border-radius:14px; padding:22px; }
+       #view-admin .admin-toolbar { display:flex; align-items:center; gap:16px; margin-bottom:16px; flex-wrap:wrap; }
+       #view-admin .admin-toolbar label { display:flex; align-items:center; gap:8px; font-size:13.5px; font-weight:600; color:var(--ink); cursor:pointer; }
+       #view-admin .admin-msg { font-size:13px; }
+       #view-admin .admin-msg.ok { color:#166534; }
+       #view-admin .admin-msg.err { color:#b91c1c; }
+       #view-admin table { width:100%; border-collapse:collapse; font-size:14px; }
+       #view-admin th { text-align:left; font-size:12px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); padding:8px 10px; border-bottom:1px solid var(--border); }
+       #view-admin td { padding:9px 10px; border-bottom:1px solid var(--border); color:var(--ink); vertical-align:middle; }
+       #view-admin td .ad-you { font-size:11px; color:var(--faint); }
+       #view-admin select.ad-role { border:1px solid var(--border); border-radius:8px; padding:6px 9px; font:inherit; font-size:13px; background:#fff; cursor:pointer; }
+       #view-admin .ad-actions { display:flex; gap:8px; }
+       #view-admin .ad-btn { border:1px solid var(--border); background:#fff; color:var(--ink); border-radius:8px; padding:6px 11px; font-size:12.5px; font-weight:600; cursor:pointer; }
+       #view-admin .ad-btn.danger { color:#b91c1c; border-color:#fca5a5; }
+       #view-admin .ad-btn:hover { background:#f8fafc; }
+     </style>
+     <div class="mhead"><h1>User management</h1><p class="sub">Manage accounts, roles and access. (Admins only.)</p></div>
+     <div class="admin-card">
+       <div class="admin-toolbar">
+         <label><input type="checkbox" id="ad-regopen"> Allow new sign-ups</label>
+         <span class="admin-msg" id="ad-msg"></span>
+       </div>
+       <table>
+         <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Actions</th></tr></thead>
+         <tbody id="ad-tbody"></tbody>
+       </table>
+     </div>
+   </div><!-- /view-admin -->
   </main>
 
   <script>
@@ -647,6 +760,31 @@
       document.querySelectorAll('.view').forEach(v => v.classList.add('hidden'));
       document.getElementById('view-' + view).classList.remove('hidden');
       document.querySelectorAll('#toolTabs .ttab').forEach(b => b.classList.toggle('active', b.dataset.view === view));
+      // The Status key legend only applies to QC Check — hide it for every other tool.
+      const sk = document.getElementById('statusKey');
+      if (sk) sk.style.display = (view === 'qc') ? '' : 'none';
+      // Corner logo shows on every page except the Home welcome screen.
+      const cl = document.getElementById('cornerLogo');
+      if (cl) cl.style.display = (view === 'home') ? 'none' : '';
+      // The client/tool tabs are always shown on tool + home views (hidden only on profile).
+      const tb = document.getElementById('toolbar');
+      if (tb) tb.style.display = '';
+    }
+
+    // Neutral landing screen shown before any client/tool is picked.
+    function showHome() {
+      selectedClient = null;
+      activeView = 'home';
+      document.querySelectorAll('#clientTabs .ctab').forEach(b => b.classList.remove('active'));
+      toolTabs.innerHTML = '';
+      document.querySelectorAll('.view').forEach(v => v.classList.add('hidden'));
+      document.getElementById('view-home').classList.remove('hidden');
+      const sk = document.getElementById('statusKey');
+      if (sk) sk.style.display = 'none';
+      const cl = document.getElementById('cornerLogo');
+      if (cl) cl.style.display = 'none';
+      const tb = document.getElementById('toolbar');
+      if (tb) tb.style.display = '';
     }
 
     document.querySelectorAll('#clientTabs .ctab').forEach(btn => {
@@ -658,8 +796,8 @@
       console.log('Client selected:', client);
     }
 
-    // Default: S2NERGY → QC Check.
-    selectClient('S2NERGY');
+    // Default: neutral Home screen — no client/tool selected until the user picks one.
+    showHome();
 
     // --- Booklet tool (QATAR): fill Word template + append drawings -> merged PDF ---
     const bkRun = document.getElementById('bk-run');
@@ -774,6 +912,342 @@
     function escapeHtml(s) {
       return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     }
+  </script>
+
+  <style>
+    /* ---- sidebar user chip ---- */
+    .side-bottom { margin-top: auto; }
+    .side-user { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 10px; cursor: pointer; background: rgba(255,255,255,.05); margin-bottom: 12px; }
+    .side-user:hover { background: rgba(255,255,255,.12); }
+    .su-avatar { width: 36px; height: 36px; border-radius: 50%; background: var(--grad); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; overflow: hidden; flex-shrink: 0; }
+    .su-avatar img { width: 100%; height: 100%; object-fit: cover; }
+    .su-meta { display: flex; flex-direction: column; line-height: 1.25; min-width: 0; }
+    .su-name { color: #fff; font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .su-role { color: var(--sidebar-muted); font-size: 11.5px; }
+
+    /* ---- auth gate ---- */
+    #authGate { position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center; padding: 20px; background: linear-gradient(135deg,#1b1e3a 0%,#241a44 55%,#2b1840 100%); }
+    #authGate .auth-card { width: 100%; max-width: 400px; background: #fff; border-radius: 18px; box-shadow: 0 30px 70px rgba(10,8,30,.45); padding: 30px 30px 26px; }
+    #authGate .auth-logo { display: flex; justify-content: center; margin-bottom: 6px; background: linear-gradient(170deg,#1b1e3a,#2b1840); border-radius: 12px; padding: 12px; }
+    #authGate .auth-logo img { max-width: 180px; max-height: 54px; object-fit: contain; }
+    #authGate h2 { margin: 16px 0 4px; font-size: 21px; font-weight: 800; color: var(--ink); text-align: center; }
+    #authGate .auth-sub { margin: 0 0 16px; font-size: 13.5px; color: var(--muted); text-align: center; }
+    #authGate label { display: block; font-size: 12.5px; font-weight: 600; color: var(--muted); margin: 12px 0 5px; }
+    #authGate input[type=text], #authGate input[type=email], #authGate input[type=password] { width: 100%; border: 1px solid var(--border); border-radius: 9px; padding: 10px 12px; font: inherit; font-size: 14px; color: var(--ink); background: #fff; }
+    #authGate input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(79,70,229,.14); }
+    #authGate select { width: 100%; border: 1px solid var(--border); border-radius: 9px; padding: 10px 12px; font: inherit; font-size: 14px; color: var(--ink); background: #fff; cursor: pointer; }
+    #authGate select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(79,70,229,.14); }
+    #authGate .auth-hint { font-size: 11.5px; color: var(--faint); margin-top: 5px; }
+    #authGate .auth-row { display: flex; align-items: center; margin: 14px 0 2px; font-size: 13px; color: var(--muted); }
+    #authGate .auth-row label { display: flex; align-items: center; gap: 7px; margin: 0; font-weight: 500; cursor: pointer; }
+    #authGate .auth-btn { width: 100%; margin-top: 16px; background: var(--grad); color: #fff; border: none; border-radius: 10px; padding: 12px; font-size: 15px; font-weight: 700; cursor: pointer; }
+    #authGate .auth-btn:disabled { opacity: .6; cursor: default; }
+    #authGate .auth-switch { margin-top: 16px; text-align: center; font-size: 13px; color: var(--muted); }
+    #authGate .auth-switch a { color: var(--accent); font-weight: 600; cursor: pointer; text-decoration: none; }
+    #authGate .auth-err { margin-top: 14px; background: #fef2f2; color: #b91c1c; border-radius: 8px; padding: 10px 12px; font-size: 13px; display: none; }
+    #authGate .hide { display: none; }
+
+    /* ---- profile view ---- */
+    #view-profile .prof-card { background: #fff; border: 1px solid var(--border); border-radius: 14px; padding: 24px; max-width: 640px; }
+    #view-profile .prof-head { display: flex; align-items: center; gap: 16px; margin-bottom: 22px; }
+    #view-profile .prof-av { width: 74px; height: 74px; border-radius: 50%; background: var(--grad); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 26px; overflow: hidden; flex-shrink: 0; }
+    #view-profile .prof-av img { width: 100%; height: 100%; object-fit: cover; }
+    #view-profile .prof-head h2 { margin: 0 0 4px; font-size: 20px; color: var(--ink); }
+    #view-profile .prof-head p { margin: 0; color: var(--muted); font-size: 13.5px; }
+    #view-profile .prof-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    #view-profile .pf { display: flex; flex-direction: column; gap: 6px; }
+    #view-profile .pf.full { grid-column: 1 / -1; }
+    #view-profile label { font-size: 12.5px; font-weight: 600; color: var(--muted); }
+    #view-profile input[type=text], #view-profile input[type=email], #view-profile input[type=password] { border: 1px solid var(--border); border-radius: 9px; padding: 9px 11px; font: inherit; font-size: 14px; color: var(--ink); background: #fff; }
+    #view-profile input:disabled { background: #f8fafc; color: var(--muted); }
+    #view-profile input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(79,70,229,.14); }
+    #view-profile select { border: 1px solid var(--border); border-radius: 9px; padding: 9px 11px; font: inherit; font-size: 14px; color: var(--ink); background: #fff; cursor: pointer; }
+    #view-profile select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(79,70,229,.14); }
+    #view-profile h3 { font-size: 14px; color: var(--ink); margin: 24px 0 12px; border-top: 1px solid var(--border); padding-top: 18px; }
+    #view-profile .prof-actions { margin-top: 18px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    #view-profile .btn { background: var(--grad); color: #fff; border: none; border-radius: 9px; padding: 10px 18px; font-size: 14px; font-weight: 600; cursor: pointer; }
+    #view-profile .btn.ghost { background: #fff; color: var(--ink); border: 1px solid var(--border); }
+    #view-profile .btn.danger { background: #fff; color: #b91c1c; border: 1px solid #fca5a5; }
+    #view-profile .prof-msg { font-size: 13px; }
+    #view-profile .prof-msg.ok { color: #166534; }
+    #view-profile .prof-msg.err { color: #b91c1c; }
+  </style>
+
+  <div id="authGate">
+    <div class="auth-card">
+      <div class="auth-logo"><img src="/logo.png" alt="Logo" onerror="this.style.display='none'"></div>
+
+      <div id="authLogin">
+        <h2>Sign in</h2>
+        <p class="auth-sub">Welcome to Support Automation</p>
+        <label>Email</label>
+        <input type="email" id="li-login" autocomplete="email">
+        <label>Password</label>
+        <input type="password" id="li-pass" autocomplete="current-password">
+        <div class="auth-row" style="justify-content:space-between">
+          <label><input type="checkbox" id="li-remember" checked> Remember me</label>
+          <a onclick="authForgot()" style="color:var(--accent);font-weight:600;cursor:pointer">Forgot password?</a>
+        </div>
+        <div class="auth-note" id="li-note" style="display:none;margin-top:8px;font-size:12.5px;color:var(--muted);background:#f1f5f9;border-radius:8px;padding:9px 11px">Please contact your administrator to reset your password.</div>
+        <div class="auth-err" id="li-err"></div>
+        <button class="auth-btn" id="li-btn">Sign in</button>
+        <div class="auth-switch" id="authRegLink">New here? <a onclick="authShow('register')">Create an account</a></div>
+      </div>
+
+      <div id="authRegister" class="hide">
+        <h2>Create account</h2>
+        <p class="auth-sub">Set up your Support Automation login</p>
+        <label>Full name</label>
+        <input type="text" id="re-name" autocomplete="name">
+        <label>Email <span class="auth-hint" style="font-weight:400">(you'll sign in with this)</span></label>
+        <input type="email" id="re-email" autocomplete="email">
+        <label>Role</label>
+        <select id="re-role"></select>
+        <label>Password</label>
+        <input type="password" id="re-pass" autocomplete="new-password">
+        <div class="auth-err" id="re-err"></div>
+        <button class="auth-btn" id="re-btn">Create account</button>
+        <div class="auth-switch">Already have an account? <a onclick="authShow('login')">Sign in</a></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      const gate = document.getElementById('authGate');
+      const sideUser = document.getElementById('sideUser');
+      let currentUser = null;
+      let pendingAvatar = null;
+
+      const $ = id => document.getElementById(id);
+      const initials = n => ((n || '?').trim().split(/\s+/).map(w => w[0]).slice(0, 2).join('') || '?').toUpperCase();
+
+      // Roles available in the dropdowns (register + profile). Add/edit this list to change them.
+      const ROLES = ['Admin', 'Project Lead', 'Lead Engineer', 'Engineer', 'Designer', 'Draftsman', 'QA/QC Engineer', 'Document Controller', 'Viewer'];
+      function fillRoles(sel, selected) {
+        sel.innerHTML = '';
+        const list = ROLES.slice();
+        if (selected && !list.includes(selected)) list.unshift(selected); // keep any custom existing role
+        list.forEach(r => { const o = document.createElement('option'); o.value = r; o.textContent = r; if (r === selected) o.selected = true; sel.appendChild(o); });
+      }
+      fillRoles($('re-role'), 'Engineer');
+
+      window.authShow = function (which) {
+        $('authLogin').classList.toggle('hide', which !== 'login');
+        $('authRegister').classList.toggle('hide', which !== 'register');
+        $('li-err').style.display = 'none';
+        $('re-err').style.display = 'none';
+      };
+
+      function paintUser(u) {
+        currentUser = u;
+        $('suName').textContent = u.name || u.username;
+        $('suRole').textContent = u.role || '';
+        $('suAvatar').innerHTML = u.avatar ? '<img src="' + u.avatar + '">' : initials(u.name || u.username);
+        sideUser.style.display = 'flex';
+        const an = $('adminNav'); if (an) an.style.display = (u.role === 'Admin') ? 'flex' : 'none';
+      }
+      function showApp(u) { paintUser(u); gate.style.display = 'none'; }
+      function showGate() { gate.style.display = 'flex'; sideUser.style.display = 'none'; const an = $('adminNav'); if (an) an.style.display = 'none'; }
+
+      // Session-expiry: any protected API that returns 401 while signed in bounces to login.
+      const _fetch = window.fetch.bind(window);
+      window.fetch = async (...args) => {
+        const res = await _fetch(...args);
+        try {
+          const url = typeof args[0] === 'string' ? args[0] : (args[0] && args[0].url) || '';
+          if (res.status === 401 && url.includes('/api/') && !url.includes('/api/auth/login') && !url.includes('/api/auth/register')) {
+            if (currentUser) {
+              currentUser = null; showGate();
+              const e = $('li-err'); if (e) { e.textContent = 'Your session expired — please sign in again.'; e.style.display = 'block'; }
+            }
+          }
+        } catch (e) {}
+        return res;
+      };
+
+      async function loadConfig() {
+        try { const r = await _fetch('/api/auth/config'); if (r.ok) { const d = await r.json(); const l = $('authRegLink'); if (l) l.style.display = d.registrationOpen ? '' : 'none'; } } catch (e) {}
+      }
+
+      window.authForgot = () => { const n = $('li-note'); n.style.display = n.style.display === 'none' ? 'block' : 'none'; };
+
+      try { const s = localStorage.getItem('sa_login'); if (s) $('li-login').value = s; } catch (e) {}
+
+      async function check() {
+        try {
+          const r = await fetch('/api/auth/me');
+          if (r.ok) { const d = await r.json(); showApp(d.user); } else showGate();
+        } catch (e) { showGate(); }
+      }
+
+      const liBtn = $('li-btn');
+      async function doLogin() {
+        const login = $('li-login').value.trim(), pass = $('li-pass').value, remember = $('li-remember').checked;
+        const err = $('li-err'); err.style.display = 'none';
+        if (!login || !pass) { err.textContent = 'Enter your username and password.'; err.style.display = 'block'; return; }
+        liBtn.disabled = true; liBtn.textContent = 'Signing in…';
+        try {
+          const r = await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ login, password: pass, remember }) });
+          const d = await r.json().catch(() => ({}));
+          if (!r.ok) { err.textContent = d.error || 'Sign in failed.'; err.style.display = 'block'; return; }
+          try { remember ? localStorage.setItem('sa_login', login) : localStorage.removeItem('sa_login'); } catch (e) {}
+          $('li-pass').value = '';
+          showApp(d.user);
+        } catch (e) { err.textContent = 'Request failed: ' + e.message; err.style.display = 'block'; }
+        finally { liBtn.disabled = false; liBtn.textContent = 'Sign in'; }
+      }
+      liBtn.addEventListener('click', doLogin);
+      $('li-pass').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+
+      const reBtn = $('re-btn');
+      reBtn.addEventListener('click', async () => {
+        const body = { name: $('re-name').value.trim(), email: $('re-email').value.trim(), role: $('re-role').value.trim(), password: $('re-pass').value };
+        const err = $('re-err'); err.style.display = 'none';
+        reBtn.disabled = true; reBtn.textContent = 'Creating…';
+        try {
+          const r = await fetch('/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+          const d = await r.json().catch(() => ({}));
+          if (!r.ok) { err.textContent = d.error || 'Could not create account.'; err.style.display = 'block'; return; }
+          try { localStorage.setItem('sa_login', body.email); } catch (e) {}
+          showApp(d.user);
+        } catch (e) { err.textContent = 'Request failed: ' + e.message; err.style.display = 'block'; }
+        finally { reBtn.disabled = false; reBtn.textContent = 'Create account'; }
+      });
+
+      window.openProfile = function () {
+        if (!currentUser) return;
+        $('pf-av').innerHTML = currentUser.avatar ? '<img src="' + currentUser.avatar + '">' : initials(currentUser.name || currentUser.username);
+        $('pf-title').textContent = currentUser.name || currentUser.username;
+        $('pf-subtitle').textContent = (currentUser.role || '') + (currentUser.email ? ' · ' + currentUser.email : '');
+        $('pf-name').value = currentUser.name || '';
+        fillRoles($('pf-role'), currentUser.role || 'Engineer');
+        $('pf-email').value = currentUser.email || '';
+        $('pf-msg').textContent = ''; $('pf-pwmsg').textContent = '';
+        $('pf-cur').value = ''; $('pf-new').value = ''; pendingAvatar = null;
+        document.querySelectorAll('#clientTabs .ctab').forEach(b => b.classList.remove('active'));
+        document.getElementById('toolTabs').innerHTML = '';
+        document.querySelectorAll('.view').forEach(v => v.classList.add('hidden'));
+        document.getElementById('view-profile').classList.remove('hidden');
+        const sk = document.getElementById('statusKey'); if (sk) sk.style.display = 'none';
+        const cl = document.getElementById('cornerLogo'); if (cl) cl.style.display = '';
+        const tb = document.getElementById('toolbar'); if (tb) tb.style.display = 'none'; // no client tabs on profile
+      };
+
+      // ---- Admin: user management ----
+      function adMsg(t, ok) { const m = $('ad-msg'); m.textContent = t; m.className = 'admin-msg ' + (ok ? 'ok' : 'err'); }
+
+      async function loadAdmin() {
+        const r = await fetch('/api/admin/users');
+        if (!r.ok) return;
+        const d = await r.json();
+        $('ad-regopen').checked = !!d.registrationOpen;
+        const tb = $('ad-tbody'); tb.innerHTML = '';
+        d.users.forEach(u => {
+          const roles = ROLES.includes(u.role) ? ROLES : [u.role].concat(ROLES);
+          const opts = roles.map(rr => '<option ' + (rr === u.role ? 'selected' : '') + '>' + escapeHtml(rr) + '</option>').join('');
+          const you = u.id === currentUser.id ? '<div class="ad-you">(you)</div>' : '';
+          const tr = document.createElement('tr');
+          tr.innerHTML =
+            '<td>' + escapeHtml(u.name || '') + you + '</td>' +
+            '<td>' + escapeHtml(u.email || '') + '</td>' +
+            '<td><select class="ad-role" data-id="' + u.id + '">' + opts + '</select></td>' +
+            '<td class="ad-actions"><button class="ad-btn" data-act="reset" data-id="' + u.id + '">Reset password</button>' +
+            '<button class="ad-btn danger" data-act="delete" data-id="' + u.id + '">Delete</button></td>';
+          tb.appendChild(tr);
+        });
+      }
+
+      window.openAdmin = async function () {
+        if (!currentUser || currentUser.role !== 'Admin') return;
+        document.querySelectorAll('#clientTabs .ctab').forEach(b => b.classList.remove('active'));
+        document.getElementById('toolTabs').innerHTML = '';
+        document.querySelectorAll('.view').forEach(v => v.classList.add('hidden'));
+        document.getElementById('view-admin').classList.remove('hidden');
+        const sk = $('statusKey'); if (sk) sk.style.display = 'none';
+        const cl = $('cornerLogo'); if (cl) cl.style.display = '';
+        const tb = $('toolbar'); if (tb) tb.style.display = 'none';
+        adMsg('', true);
+        await loadAdmin();
+      };
+
+      $('ad-tbody').addEventListener('change', async e => {
+        if (!e.target.classList.contains('ad-role')) return;
+        const id = e.target.dataset.id, role = e.target.value;
+        const r = await fetch('/api/admin/role', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, role }) });
+        const d = await r.json().catch(() => ({}));
+        if (r.ok) { adMsg('Role updated.', true); if (id === currentUser.id) { currentUser.role = role; paintUser(currentUser); } }
+        else { adMsg(d.error || 'Failed.', false); loadAdmin(); }
+      });
+
+      $('ad-tbody').addEventListener('click', async e => {
+        const btn = e.target.closest('button'); if (!btn) return;
+        const id = btn.dataset.id, act = btn.dataset.act;
+        if (act === 'reset') {
+          const pw = prompt('Enter a new password for this user (min 6 characters):');
+          if (!pw) return;
+          const r = await fetch('/api/admin/reset', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, password: pw }) });
+          const d = await r.json().catch(() => ({}));
+          adMsg(r.ok ? 'Password reset.' : (d.error || 'Failed.'), r.ok);
+        } else if (act === 'delete') {
+          if (!confirm('Delete this user? This cannot be undone.')) return;
+          const r = await fetch('/api/admin/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
+          const d = await r.json().catch(() => ({}));
+          if (r.ok) { adMsg('User deleted.', true); loadAdmin(); } else adMsg(d.error || 'Failed.', false);
+        }
+      });
+
+      $('ad-regopen').addEventListener('change', async e => {
+        const open = e.target.checked;
+        const r = await fetch('/api/admin/registration', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ open }) });
+        const d = await r.json().catch(() => ({}));
+        if (r.ok) adMsg('New sign-ups ' + (open ? 'enabled' : 'disabled') + '.', true);
+        else { adMsg(d.error || 'Failed.', false); e.target.checked = !open; }
+      });
+
+      $('pf-photo').addEventListener('change', e => {
+        const f = e.target.files[0]; if (!f) return;
+        const reader = new FileReader();
+        reader.onload = () => { pendingAvatar = reader.result; $('pf-av').innerHTML = '<img src="' + pendingAvatar + '">'; };
+        reader.readAsDataURL(f);
+      });
+
+      $('pf-save').addEventListener('click', async () => {
+        const msg = $('pf-msg'); msg.className = 'prof-msg'; msg.textContent = 'Saving…';
+        const body = { name: $('pf-name').value.trim(), role: $('pf-role').value.trim(), email: $('pf-email').value.trim(), avatar: pendingAvatar };
+        try {
+          const r = await fetch('/api/auth/profile', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+          const d = await r.json().catch(() => ({}));
+          if (!r.ok) { msg.className = 'prof-msg err'; msg.textContent = d.error || 'Save failed.'; return; }
+          pendingAvatar = null; paintUser(d.user);
+          $('pf-title').textContent = d.user.name || d.user.username;
+          $('pf-subtitle').textContent = (d.user.role || '') + (d.user.email ? ' · ' + d.user.email : '');
+          msg.className = 'prof-msg ok'; msg.textContent = 'Saved.';
+        } catch (e) { msg.className = 'prof-msg err'; msg.textContent = 'Request failed.'; }
+      });
+
+      $('pf-pwbtn').addEventListener('click', async () => {
+        const msg = $('pf-pwmsg'); msg.className = 'prof-msg'; msg.textContent = 'Updating…';
+        const body = { current: $('pf-cur').value, next: $('pf-new').value };
+        try {
+          const r = await fetch('/api/auth/change-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+          const d = await r.json().catch(() => ({}));
+          if (!r.ok) { msg.className = 'prof-msg err'; msg.textContent = d.error || 'Failed.'; return; }
+          $('pf-cur').value = ''; $('pf-new').value = '';
+          msg.className = 'prof-msg ok'; msg.textContent = 'Password updated.';
+        } catch (e) { msg.className = 'prof-msg err'; msg.textContent = 'Request failed.'; }
+      });
+
+      $('pf-logout').addEventListener('click', async () => {
+        try { await fetch('/api/auth/logout', { method: 'POST' }); } catch (e) {}
+        currentUser = null;
+        if (typeof showHome === 'function') showHome();
+        showGate();
+      });
+
+      loadConfig();
+      check();
+    })();
   </script>
 </body>
 </html>

@@ -25,11 +25,102 @@ app.Urls.Add(string.IsNullOrEmpty(hostPort)
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
+// ---------- Authentication: accounts, login/logout, profile ----------
+app.MapPost("/api/auth/register", (HttpContext ctx, RegisterDto dto) =>
+{
+    var (ok, err, user) = DrawingQC.Web.Auth.Register(dto.username, dto.email, dto.password, dto.name, dto.role);
+    if (!ok) return Results.BadRequest(new { error = err });
+    SetSession(ctx, user!.Id, remember: true);
+    return Results.Ok(new { user = DrawingQC.Web.Auth.Public(user) });
+});
+
+app.MapPost("/api/auth/login", (HttpContext ctx, LoginDto dto) =>
+{
+    var user = DrawingQC.Web.Auth.Validate(dto.login, dto.password);
+    if (user == null) return Results.Json(new { error = "Invalid username or password." }, statusCode: 401);
+    SetSession(ctx, user.Id, dto.remember);
+    return Results.Ok(new { user = DrawingQC.Web.Auth.Public(user) });
+});
+
+app.MapPost("/api/auth/logout", (HttpContext ctx) => { ClearSession(ctx); return Results.Ok(new { ok = true }); });
+
+app.MapGet("/api/auth/me", (HttpContext ctx) =>
+{
+    var user = CurrentUser(ctx.Request);
+    return user == null
+        ? Results.Json(new { error = "Not signed in." }, statusCode: 401)
+        : Results.Ok(new { user = DrawingQC.Web.Auth.Public(user) });
+});
+
+app.MapPost("/api/auth/change-password", (HttpContext ctx, ChangePwDto dto) =>
+{
+    var user = CurrentUser(ctx.Request);
+    if (user == null) return Results.Json(new { error = "Not signed in." }, statusCode: 401);
+    return DrawingQC.Web.Auth.ChangePassword(user.Id, dto.current, dto.next)
+        ? Results.Ok(new { ok = true })
+        : Results.BadRequest(new { error = "Current password is incorrect, or the new password is too short (min 6)." });
+});
+
+app.MapPost("/api/auth/profile", (HttpContext ctx, ProfileDto dto) =>
+{
+    var user = CurrentUser(ctx.Request);
+    if (user == null) return Results.Json(new { error = "Not signed in." }, statusCode: 401);
+    var updated = DrawingQC.Web.Auth.UpdateProfile(user.Id, dto.name, dto.email, dto.role, dto.avatar);
+    return updated == null
+        ? Results.BadRequest(new { error = "Could not update profile (email may already be in use)." })
+        : Results.Ok(new { user = DrawingQC.Web.Auth.Public(updated) });
+});
+
+// Public config so the login page knows whether to offer "Create an account".
+app.MapGet("/api/auth/config", () => Results.Ok(new
+{
+    registrationOpen = DrawingQC.Web.Auth.GetSettings().RegistrationOpen,
+    hasUsers = DrawingQC.Web.Auth.UserCount() > 0,
+}));
+
+// ---------- Admin: user management (admins only) ----------
+app.MapGet("/api/admin/users", (HttpContext ctx) =>
+{
+    if (!DrawingQC.Web.Auth.IsAdmin(CurrentUser(ctx.Request))) return Results.Json(new { error = "Admins only." }, statusCode: 403);
+    return Results.Ok(new { users = DrawingQC.Web.Auth.ListUsers(), registrationOpen = DrawingQC.Web.Auth.GetSettings().RegistrationOpen });
+});
+
+app.MapPost("/api/admin/role", (HttpContext ctx, AdminRoleDto dto) =>
+{
+    if (!DrawingQC.Web.Auth.IsAdmin(CurrentUser(ctx.Request))) return Results.Json(new { error = "Admins only." }, statusCode: 403);
+    var (ok, err) = DrawingQC.Web.Auth.AdminSetRole(dto.id ?? "", dto.role);
+    return ok ? Results.Ok(new { ok = true }) : Results.BadRequest(new { error = err });
+});
+
+app.MapPost("/api/admin/reset", (HttpContext ctx, AdminResetDto dto) =>
+{
+    if (!DrawingQC.Web.Auth.IsAdmin(CurrentUser(ctx.Request))) return Results.Json(new { error = "Admins only." }, statusCode: 403);
+    var (ok, err) = DrawingQC.Web.Auth.AdminResetPassword(dto.id ?? "", dto.password);
+    return ok ? Results.Ok(new { ok = true }) : Results.BadRequest(new { error = err });
+});
+
+app.MapPost("/api/admin/delete", (HttpContext ctx, AdminIdDto dto) =>
+{
+    var me = CurrentUser(ctx.Request);
+    if (!DrawingQC.Web.Auth.IsAdmin(me)) return Results.Json(new { error = "Admins only." }, statusCode: 403);
+    var (ok, err) = DrawingQC.Web.Auth.AdminDelete(me!.Id, dto.id ?? "");
+    return ok ? Results.Ok(new { ok = true }) : Results.BadRequest(new { error = err });
+});
+
+app.MapPost("/api/admin/registration", (HttpContext ctx, RegToggleDto dto) =>
+{
+    if (!DrawingQC.Web.Auth.IsAdmin(CurrentUser(ctx.Request))) return Results.Json(new { error = "Admins only." }, statusCode: 403);
+    DrawingQC.Web.Auth.SetRegistrationOpen(dto.open);
+    return Results.Ok(new { ok = true, registrationOpen = dto.open });
+});
+
 // Generated Excel reports, kept in memory keyed by a token so the browser can download them.
 var reports = new ConcurrentDictionary<string, (byte[] Bytes, string FileName)>();
 
 app.MapPost("/api/analyze", async (HttpRequest request) =>
 {
+    if (CurrentUser(request) == null)
+        return Results.Json(new { error = "Please sign in first." }, statusCode: 401);
     if (!request.HasFormContentType)
         return Results.BadRequest(new { error = "Expected a multipart form upload." });
 
@@ -111,6 +202,8 @@ app.MapGet("/api/report/{token}", (string token) =>
 // Push the QC register into the AutoCAD instance running on this PC (live COM sync).
 app.MapPost("/api/sync-autocad", async (HttpRequest request) =>
 {
+    if (CurrentUser(request) == null)
+        return Results.Json(new { error = "Please sign in first." }, statusCode: 401);
     if (!OperatingSystem.IsWindows())
         return Results.Problem("AutoCAD sync is only available on Windows.");
 
@@ -154,6 +247,8 @@ string? lastBookletDocx = null;
 
 app.MapPost("/api/booklet", async (HttpRequest request) =>
 {
+    if (CurrentUser(request) == null)
+        return Results.Json(new { error = "Please sign in first." }, statusCode: 401);
     if (!OperatingSystem.IsWindows())
         return Results.Problem("Booklet generation is only available on the local Windows app (it needs Microsoft Word installed).");
     if (!request.HasFormContentType)
@@ -249,3 +344,33 @@ static async Task<string> ResolveBookletInput(IFormCollection form, string name,
     }
     return form[name + "Path"].ToString().Trim().Trim('"');
 }
+
+// ---------- Auth session helpers ----------
+static DrawingQC.Web.UserAccount? CurrentUser(HttpRequest req)
+{
+    var uid = DrawingQC.Web.Auth.ValidateToken(req.Cookies[DrawingQC.Web.Auth.CookieName]);
+    return uid == null ? null : DrawingQC.Web.Auth.FindById(uid);
+}
+
+static void SetSession(HttpContext ctx, string userId, bool remember)
+{
+    var exp = DateTime.UtcNow.AddDays(remember ? 30 : 1);
+    var token = DrawingQC.Web.Auth.CreateToken(userId, exp);
+    var opts = new CookieOptions { HttpOnly = true, SameSite = SameSiteMode.Lax, Path = "/" };
+    if (remember) opts.Expires = new DateTimeOffset(exp); // persistent "remember me" cookie
+    ctx.Response.Cookies.Append(DrawingQC.Web.Auth.CookieName, token, opts);
+}
+
+static void ClearSession(HttpContext ctx) =>
+    ctx.Response.Cookies.Append(DrawingQC.Web.Auth.CookieName, "",
+        new CookieOptions { Expires = DateTimeOffset.UnixEpoch, Path = "/" });
+
+// ---------- Auth request bodies ----------
+record RegisterDto(string? username, string? email, string? password, string? name, string? role);
+record LoginDto(string? login, string? password, bool remember);
+record ChangePwDto(string? current, string? next);
+record ProfileDto(string? name, string? email, string? role, string? avatar);
+record AdminRoleDto(string? id, string? role);
+record AdminResetDto(string? id, string? password);
+record AdminIdDto(string? id);
+record RegToggleDto(bool open);
