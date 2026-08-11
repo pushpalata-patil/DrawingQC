@@ -506,24 +506,32 @@ public static class BookletBuilder
             !p.InnerText.Contains("PAGEREF"));
         if (heading == null) return 0;
 
-        // Row height so RowsPerPage rows fill exactly one page of THIS template.
-        int rowHeight = Math.Clamp(pageBudget / RowsPerPage, 200, 340);
+        // Split into pages of RowsPerPage, but fold a small orphan last page into the previous
+        // page so we don't leave a near-empty final page (e.g. 226 rows -> 45,45,45,45,46 instead
+        // of a final page with a single row).
+        var pages = new List<List<string[]>>();
+        for (int i = 0; i < data.Count; i += RowsPerPage)
+            pages.Add(data.Skip(i).Take(RowsPerPage).ToList());
+        if (pages.Count >= 2 && pages[^1].Count <= 5)
+        {
+            pages[^2].AddRange(pages[^1]);
+            pages.RemoveAt(pages.Count - 1);
+        }
 
         OpenXmlElement anchor = heading;
-        int idx = 0;
         bool first = true;
-        while (idx < data.Count)
+        foreach (var chunk in pages)
         {
-            var chunk = data.Skip(idx).Take(RowsPerPage).ToList();
-            idx += chunk.Count;
-            // The first table needs no page break — the list section break already starts it on a
-            // fresh page (below the APPENDIX A divider); the rest start their own page.
+            // Row height fills exactly one page; a page holding a folded orphan (>45 rows) uses a
+            // slightly shorter height so it still fits. The first table needs no page break — the
+            // list section break already starts it below the APPENDIX A divider.
+            int rowHeight = Math.Clamp(pageBudget / Math.Max(RowsPerPage, chunk.Count), 180, 340);
             var table = BuildListTable(chunk, pageBreakBefore: !first, rowHeight, colWidths);
             first = false;
             anchor.InsertAfterSelf(table);
             anchor = table;
         }
-        return idx;
+        return data.Count;
     }
 
     private static Table BuildListTable(List<string[]> chunk, bool pageBreakBefore, int rowHeight, int[] colWidths)
