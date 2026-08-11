@@ -344,6 +344,46 @@ app.MapGet("/api/booklet/download", (string? format) =>
     return Results.File(path, ctype, Path.GetFileName(path));
 });
 
+// ---------- KBR: Tagwise Delivery Report ----------
+app.MapPost("/api/kbr/tagreport", async (HttpRequest request) =>
+{
+    if (CurrentUser(request) == null)
+        return Results.Json(new { error = "Please sign in first." }, statusCode: 401);
+    if (!request.HasFormContentType)
+        return Results.BadRequest(new { error = "Expected a form upload." });
+
+    var form = await request.ReadFormAsync();
+    var temps = new List<string>();
+    try
+    {
+        string excel = await ResolveBookletInput(form, "excel", ".xlsx", temps);   // client list
+        string zip = await ResolveBookletInput(form, "zip", ".zip", temps);        // done files
+        if (string.IsNullOrWhiteSpace(excel) || !File.Exists(excel))
+            return Results.BadRequest(new { error = "Please provide the client Excel (upload a file or paste a valid path)." });
+        if (string.IsNullOrWhiteSpace(zip) || !File.Exists(zip))
+            return Results.BadRequest(new { error = "Please provide the .zip of delivered .dwg/.pdf files." });
+
+        var result = await Task.Run(() => DrawingQC.Web.TagDeliveryReport.Build(excel, zip));
+        var token = Guid.NewGuid().ToString("N");
+        reports[token] = (result.Excel, "Tagwise Delivery Report.xlsx");
+        return Results.Ok(new
+        {
+            ok = true,
+            reportToken = token,
+            summary = new { total = result.Total, delivered = result.Delivered, pending = result.Pending, doneFiles = result.DoneFiles, sheet = result.SheetUsed, column = result.Column },
+            rows = result.Rows,
+        });
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem("Failed to build report: " + ex.Message);
+    }
+    finally
+    {
+        foreach (var t in temps) { try { File.Delete(t); } catch { } }
+    }
+});
+
 app.Run();
 
 // An input may arrive as an uploaded file (<name>File) or as a local path (<name>Path).

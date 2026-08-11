@@ -580,6 +580,73 @@
        </table>
      </div>
    </div><!-- /view-admin -->
+
+   <div id="view-tagreport" class="view hidden">
+     <style>
+       #view-tagreport .kbr-panel { background:#fff; border:1px solid var(--border); border-radius:14px; padding:20px; }
+       #view-tagreport .kbr-lbl { display:block; font-weight:600; font-size:13px; color:var(--muted); margin-bottom:6px; }
+       #view-tagreport .kbr-row { display:flex; gap:10px; align-items:center; }
+       #view-tagreport .kbr-row input[type=text] { flex:1; border:1px solid var(--border); border-radius:8px; padding:9px 11px; font:inherit; font-size:14px; color:var(--ink); background:#fff; }
+       #view-tagreport .kbr-row input[type=text]:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(79,70,229,.14); }
+       #view-tagreport .kbr-or { color:var(--faint); font-size:12px; }
+       #view-tagreport .kbr-choose { background:#64748b; color:#fff; border:1px solid #64748b; border-radius:8px; padding:8px 14px; font-size:13px; cursor:pointer; white-space:nowrap; }
+       #view-tagreport .kbr-choose:hover { background:#4b5563; }
+       #view-tagreport .kbr-actions { display:flex; gap:12px; align-items:center; margin-top:14px; }
+       #view-tagreport .kbr-btn { background:var(--grad); color:#fff; border:none; border-radius:9px; padding:10px 18px; font-size:14px; font-weight:600; cursor:pointer; }
+       #view-tagreport .kbr-btn.ghost { background:#fff; color:var(--ink); border:1px solid var(--border); }
+       #view-tagreport .kbr-btn:disabled { opacity:.6; cursor:default; }
+       #view-tagreport .kbr-cards { display:none; gap:14px; margin-top:18px; }
+       #view-tagreport .kbr-card { flex:1; background:#fff; border:1px solid var(--border); border-radius:12px; padding:16px 18px; }
+       #view-tagreport .kbr-num { font-size:26px; font-weight:800; color:var(--ink); }
+       #view-tagreport .kbr-cap { font-size:13px; color:var(--muted); margin-top:4px; }
+       #view-tagreport .kbr-results { margin-top:16px; background:#fff; border:1px solid var(--border); border-radius:14px; padding:16px; overflow-x:auto; }
+       #view-tagreport table { width:100%; border-collapse:collapse; font-size:13.5px; }
+       #view-tagreport th { text-align:left; font-size:11.5px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); padding:8px 10px; border-bottom:1px solid var(--border); white-space:nowrap; }
+       #view-tagreport td { padding:8px 10px; border-bottom:1px solid var(--border); color:var(--ink); }
+       #view-tagreport td.st { font-weight:700; }
+       #view-tagreport td.st.Delivered { color:#166534; }
+       #view-tagreport td.st.Partial { color:#b45309; }
+       #view-tagreport td.st.Pending { color:#b91c1c; }
+       #view-tagreport .kbr-msg { margin-top:12px; padding:10px 12px; border-radius:8px; font-size:14px; background:#fef2f2; color:#b91c1c; }
+     </style>
+     <div class="mhead">
+       <h1>Tagwise Delivery Report</h1>
+       <p class="sub"><span class="client-tag">KBR</span> Upload a delivery Excel and generate a report grouped by tag.</p>
+     </div>
+     <section class="kbr-panel">
+       <label class="kbr-lbl">Client Excel (.xlsx) — the expected drawing list</label>
+       <div class="kbr-row">
+         <input type="text" id="kbr-excel-path" placeholder="Paste full path to the client .xlsx, or choose a file →">
+         <span class="kbr-or">or</span>
+         <label class="kbr-choose">Choose File<input type="file" id="kbr-excel-file" accept=".xlsx,.xls" hidden></label>
+       </div>
+       <label class="kbr-lbl" style="margin-top:14px">Delivered files — a .zip of the done .dwg / .pdf files</label>
+       <div class="kbr-row">
+         <input type="text" id="kbr-zip-path" placeholder="Paste full path to the .zip, or choose a file →">
+         <span class="kbr-or">or</span>
+         <label class="kbr-choose">Choose File<input type="file" id="kbr-zip-file" accept=".zip" hidden></label>
+       </div>
+       <div class="kbr-actions">
+         <button class="kbr-btn" id="kbr-run">Generate report</button>
+         <button class="kbr-btn ghost hidden" id="kbr-download">⬇ Download Excel</button>
+         <span class="fname" id="kbr-status">Ready</span>
+       </div>
+       <div id="kbr-error" class="kbr-msg hidden"></div>
+     </section>
+
+     <div class="kbr-cards" id="kbr-stats">
+       <div class="kbr-card"><div class="kbr-num" id="kbr-total">0</div><div class="kbr-cap">Total Drawings</div></div>
+       <div class="kbr-card"><div class="kbr-num" id="kbr-deliv" style="color:#166534">0</div><div class="kbr-cap">Delivered</div></div>
+       <div class="kbr-card"><div class="kbr-num" id="kbr-pend" style="color:#b91c1c">0</div><div class="kbr-cap">Pending</div></div>
+     </div>
+
+     <div class="kbr-results hidden" id="kbr-results">
+       <table>
+         <thead><tr><th>S.No</th><th>Drawing No.</th><th>Status</th><th>Delivery Date</th><th>Delivered File</th></tr></thead>
+         <tbody id="kbr-tbody"></tbody>
+       </table>
+     </div>
+   </div><!-- /view-tagreport -->
   </main>
 
   <script>
@@ -715,7 +782,7 @@
       S2NERGY: [ { id: 'qc', label: 'QC Check' }, { id: 'mto', label: 'MTO Check' } ],
       QATAR:   [],
       UAE:     [ { id: 'booklet', label: 'Booklet' } ],
-      KBR:     [],
+      KBR:     [ { id: 'tagreport', label: 'Tagwise Delivery Report' } ],
     };
 
     let selectedClient = null;
@@ -801,6 +868,13 @@
     // --- Booklet tool (QATAR): fill Word template + append drawings -> merged PDF ---
     const bkRun = document.getElementById('bk-run');
     if (bkRun) {
+      // On (re)load, clear the file-path boxes and disable autocomplete so a browser-restored
+      // bare filename can't be submitted as a path (which caused "Template file not found").
+      ['template', 'excel', 'drawings', 'bom'].forEach(n => {
+        const el = document.getElementById('bk-' + n + '-path');
+        if (el) { el.value = ''; el.setAttribute('autocomplete', 'off'); }
+      });
+
       const bkStatus = document.getElementById('bk-status');
       const bkError = document.getElementById('bk-error');
       const bkResult = document.getElementById('bk-result');
@@ -911,6 +985,74 @@
     function escapeHtml(s) {
       return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     }
+
+    // --- KBR: Tagwise Delivery Report ---
+    (function () {
+      const runBtn = document.getElementById('kbr-run');
+      if (!runBtn) return;
+      // Clear path boxes on load so a browser-restored bare filename isn't sent as a path.
+      ['excel', 'zip'].forEach(n => {
+        const el = document.getElementById('kbr-' + n + '-path');
+        if (el) { el.value = ''; el.setAttribute('autocomplete', 'off'); }
+      });
+      const statusEl = document.getElementById('kbr-status');
+      const errEl = document.getElementById('kbr-error');
+      const dlBtn = document.getElementById('kbr-download');
+      let token = null;
+
+      // Mirror a chosen file's name into its path box.
+      [['kbr-excel-file', 'kbr-excel-path'], ['kbr-zip-file', 'kbr-zip-path']].forEach(([fi, pa]) => {
+        const f = document.getElementById(fi);
+        f.addEventListener('change', () => { if (f.files[0]) document.getElementById(pa).value = f.files[0].name; });
+      });
+      dlBtn.addEventListener('click', () => { if (token) window.location.href = '/api/report/' + token; });
+
+      // Attach an input as <name>File (upload) or <name>Path (typed path). Returns true if provided.
+      const attach = (fd, name) => {
+        const file = document.getElementById('kbr-' + name + '-file').files[0];
+        const path = (document.getElementById('kbr-' + name + '-path').value || '').trim();
+        if (file) { fd.append(name + 'File', file); return true; }
+        if (path) { fd.append(name + 'Path', path); return true; }
+        return false;
+      };
+
+      runBtn.addEventListener('click', async () => {
+        errEl.classList.add('hidden');
+        const fd = new FormData();
+        const haveExcel = attach(fd, 'excel'), haveZip = attach(fd, 'zip');
+        if (!haveExcel || !haveZip) {
+          errEl.textContent = 'Provide both the client Excel and the .zip of delivered files.';
+          errEl.classList.remove('hidden'); return;
+        }
+
+        runBtn.disabled = true; runBtn.innerHTML = '<span class="spinner"></span>Matching…'; statusEl.textContent = 'Reading files…';
+        try {
+          const res = await fetch('/api/kbr/tagreport', { method: 'POST', body: fd });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) { errEl.textContent = data.error || data.detail || 'Report failed.'; errEl.classList.remove('hidden'); statusEl.textContent = 'Failed.'; return; }
+          token = data.reportToken;
+          document.getElementById('kbr-total').textContent = data.summary.total;
+          document.getElementById('kbr-deliv').textContent = data.summary.delivered;
+          document.getElementById('kbr-pend').textContent = data.summary.pending;
+          document.getElementById('kbr-stats').style.display = 'flex';
+          const tb = document.getElementById('kbr-tbody'); tb.innerHTML = '';
+          data.rows.forEach(r => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = '<td>' + r.srNo + '</td><td>' + escapeHtml(r.drawingNo) +
+              '</td><td class="st ' + r.status + '">' + r.status + '</td><td>' + escapeHtml(r.deliveryDate) +
+              '</td><td>' + escapeHtml(r.matchedFile) + '</td>';
+            tb.appendChild(tr);
+          });
+          document.getElementById('kbr-results').classList.remove('hidden');
+          dlBtn.classList.remove('hidden');
+          statusEl.textContent = 'Done — ' + data.summary.delivered + ' delivered, ' + data.summary.pending + ' pending of ' + data.summary.total + ' (matched against ' + data.summary.doneFiles + ' files).';
+        } catch (e) {
+          errEl.textContent = 'Request failed: ' + e.message; errEl.classList.remove('hidden'); statusEl.textContent = 'Failed.';
+        } finally {
+          runBtn.disabled = false; runBtn.textContent = 'Generate report';
+        }
+      });
+    })();
   </script>
 
   <style>

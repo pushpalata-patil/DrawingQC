@@ -109,18 +109,27 @@ public static class BookletBuilder
                 .InnerText.Contains("CABLE TRAY SUPPORTS", StringComparison.OrdinalIgnoreCase) == true)
             .ToList();
 
+        // The index (list) pages get NO repeating title-block header, so size 45 rows to the
+        // full body height (no header subtraction). Column widths fit the printable width.
+        int pageBudget = ComputePageBudget(doc, body, includeHeader: false);
+        int[] colWidths = ScaleColumns(ComputeUsableWidth(body));
+
         int filled;
         if (listTables.Count > 0)
         {
             // Shrink the empty paragraphs between tables to ~1pt so tall page-filling rows
             // don't spill onto (and create) blank pages.
             ShrinkInterTableBlanks(listTables);
-            filled = FillPreMadeTables(listTables, data);
+            filled = FillPreMadeTables(listTables, data, pageBudget, colWidths);
         }
         else
         {
-            filled = GenerateListTables(body, data);
+            filled = GenerateListTables(body, data, pageBudget, colWidths);
         }
+
+        // Put the list in its own section with a blank header so the title-block header does not
+        // appear on the index pages (kept on the cover/section/appendix pages).
+        try { RemoveListHeader(doc, body); } catch { /* keep the header if section surgery fails */ }
 
         // Newer 3-appendix template: drop the "Standard Details" appendix so the
         // "Detailed Drawings" appendix becomes B (matching the old 2-appendix format).
@@ -154,15 +163,15 @@ public static class BookletBuilder
         }
     }
 
-    // Resize a pre-made list table's columns to the widened widths (so 9pt HK-CTS tags fit).
-    private static void SetListColumnWidths(Table table)
+    // Resize a pre-made list table's columns to fit the template's printable width.
+    private static void SetListColumnWidths(Table table, int[] colWidths)
     {
         var grid = table.GetFirstChild<TableGrid>();
         if (grid != null)
         {
             var cols = grid.Elements<GridColumn>().ToList();
-            for (int c = 0; c < cols.Count && c < ListColWidths.Length; c++)
-                cols[c].Width = ListColWidths[c].ToString();
+            for (int c = 0; c < cols.Count && c < colWidths.Length; c++)
+                cols[c].Width = colWidths[c].ToString();
         }
 
         var tblPr = table.GetFirstChild<TableProperties>() ?? table.PrependChild(new TableProperties());
@@ -172,27 +181,179 @@ public static class BookletBuilder
         foreach (var row in table.Elements<TableRow>())
         {
             var cells = row.Elements<TableCell>().ToList();
-            if (cells.Count != ListColWidths.Length) continue; // skip the merged title row
+            if (cells.Count != colWidths.Length) continue; // skip the merged title row
             for (int c = 0; c < cells.Count; c++)
             {
                 var tcPr = cells[c].GetFirstChild<TableCellProperties>()
                     ?? cells[c].PrependChild(new TableCellProperties());
                 tcPr.RemoveAllChildren<TableCellWidth>();
-                tcPr.PrependChild(new TableCellWidth { Type = TableWidthUnitValues.Dxa, Width = ListColWidths[c].ToString() });
+                tcPr.PrependChild(new TableCellWidth { Type = TableWidthUnitValues.Dxa, Width = colWidths[c].ToString() });
             }
         }
     }
 
-    // Total twips of data-row height that fills one list page. 45 rows x 315 (= 14175) was
-    // verified to fill a page ~93% with no blank/spill pages, so we reuse that budget and
-    // divide it by however many rows a table actually has (adaptive height).
-    private const int PageRowBudget = 14175;
+    // Twips available for data rows on one list page = usable body height (page height minus
+    // margins minus the tall repeating page header) minus the table's title + header rows.
+    // Deriving this from the actual template geometry keeps 45 rows filling exactly one page
+    // regardless of page size / header height (a fixed 315 overflowed header-heavy templates).
+    private static int ComputePageBudget(WordprocessingDocument doc, Body body, bool includeHeader = true)
+    {
+        int pageH = 16838, topM = 1440, bottomM = 1440, headerDist = 720; // A4 defaults
+        var sect = body.Descendants<SectionProperties>().FirstOrDefault();
+        if (sect != null)
+        {
+            var ps = sect.GetFirstChild<PageSize>();
+            var pm = sect.GetFirstChild<PageMargin>();
+            if (ps?.Height?.Value != null) pageH = (int)ps.Height.Value;
+            if (pm != null)
+            {
+                if (pm.Top?.Value != null) topM = pm.Top.Value;
+                if (pm.Bottom?.Value != null) bottomM = pm.Bottom.Value;
+                if (pm.Header?.Value != null) headerDist = (int)pm.Header.Value;
+            }
+        }
+        // Tallest repeating page header — its explicit table-row heights push the body down.
+        int headerH = 0;
+        if (includeHeader)
+            foreach (var hp in doc.MainDocumentPart!.HeaderParts)
+            {
+                int sum = 0;
+                foreach (var tr in hp.Header.Descendants<TableRow>())
+                {
+                    var trh = tr.TableRowProperties?.GetFirstChild<TableRowHeight>();
+                    sum += trh?.Val?.Value != null ? (int)trh.Val.Value : 300;
+                }
+                headerH = Math.Max(headerH, sum);
+            }
+        // Header content (logos) usually renders taller than its explicit row heights, so add a
+        // buffer; otherwise 45 rows overflow by a few and spill onto a short continuation page.
+        // When the list section has no header (includeHeader=false) the body starts at the margin.
+        int bodyTop = includeHeader ? Math.Max(topM, headerDist + (int)(headerH * 1.35)) : topM;
+        int forData = pageH - bodyTop - bottomM - 750 /* table title + header rows */ - 300 /* safety */;
+        return Math.Clamp(forData, 6000, 15000);
+    }
+
+    // Printable width (page width minus left/right margins) for THIS template.
+    private static int ComputeUsableWidth(Body body)
+    {
+        int pageW = 11906, leftM = 1440, rightM = 1440; // A4 defaults
+        var sect = body.Descendants<SectionProperties>().FirstOrDefault();
+        if (sect != null)
+        {
+            var ps = sect.GetFirstChild<PageSize>();
+            var pm = sect.GetFirstChild<PageMargin>();
+            if (ps?.Width?.Value != null) pageW = (int)ps.Width.Value;
+            if (pm != null)
+            {
+                if (pm.Left?.Value != null) leftM = (int)pm.Left.Value;
+                if (pm.Right?.Value != null) rightM = (int)pm.Right.Value;
+            }
+        }
+        return Math.Max(4000, pageW - leftM - rightM);
+    }
+
+    // Minimum width each column needs so its 9pt text stays on one line (S.L., SUPPORT No.,
+    // DRAWING No., REVISION, LEVEL, PRESENT STATUS, REMARKS). Used when the printable width is
+    // narrower than the reference table so the data columns don't shrink enough to wrap/clip.
+    private static readonly int[] ListColMins = { 480, 1680, 1680, 1000, 1600, 1550, 850 };
+
+    // Fit the reference column widths into the template's printable width. A wider page scales
+    // up proportionally; a narrower page shrinks each column toward its minimum in proportion
+    // to its slack, so the (empty) Present Status / Remarks columns give up space first and the
+    // data columns stay wide enough for their text.
+    private static int[] ScaleColumns(int usableWidth)
+    {
+        int refSum = ListColWidths.Sum();
+        var scaled = new int[ListColWidths.Length];
+
+        if (usableWidth >= refSum)
+        {
+            int acc = 0;
+            for (int i = 0; i < scaled.Length; i++) { scaled[i] = (int)Math.Round((double)ListColWidths[i] * usableWidth / refSum); acc += scaled[i]; }
+            scaled[^1] += usableWidth - acc;
+            return scaled;
+        }
+
+        int minSum = ListColMins.Sum();
+        if (usableWidth <= minSum) // extremely narrow: scale the minimums (last resort)
+        {
+            int acc = 0;
+            for (int i = 0; i < scaled.Length; i++) { scaled[i] = (int)Math.Round((double)ListColMins[i] * usableWidth / minSum); acc += scaled[i]; }
+            scaled[^1] += usableWidth - acc;
+            return scaled;
+        }
+
+        int deficit = refSum - usableWidth;
+        int totalSlack = refSum - minSum;
+        int used = 0;
+        for (int i = 0; i < scaled.Length; i++)
+        {
+            int reduce = (int)Math.Round((double)deficit * (ListColWidths[i] - ListColMins[i]) / totalSlack);
+            scaled[i] = ListColWidths[i] - reduce;
+            used += scaled[i];
+        }
+        scaled[^1] += usableWidth - used; // absorb rounding drift
+        return scaled;
+    }
+
+    // Order a sectPr's SectionType correctly (it must sit just before PageSize).
+    private static void SetNextPageType(SectionProperties sect)
+    {
+        sect.RemoveAllChildren<SectionType>();
+        var type = new SectionType { Val = SectionMarkValues.NextPage };
+        var pgSz = sect.GetFirstChild<PageSize>();
+        if (pgSz != null) sect.InsertBefore(type, pgSz); else sect.AppendChild(type);
+    }
+
+    // Put the support list in its own section that references an EMPTY header, so the repeating
+    // title-block header does not print on the index pages. The pages before (cover/sections/
+    // appendix divider) and after (detailed drawings) keep their normal header.
+    private static void RemoveListHeader(WordprocessingDocument doc, Body body)
+    {
+        var main = doc.MainDocumentPart!;
+        var mainSect = body.Elements<SectionProperties>().LastOrDefault();
+        if (mainSect == null) return;
+
+        static bool IsListTable(Table t) => t.Elements<TableRow>().FirstOrDefault()?
+            .InnerText.Contains("CABLE TRAY SUPPORTS", StringComparison.OrdinalIgnoreCase) == true;
+
+        var firstListTable = body.Descendants<Table>().FirstOrDefault(IsListTable);
+        var lastListTable = body.Descendants<Table>().LastOrDefault(IsListTable);
+        if (firstListTable == null || lastListTable == null) return;
+
+        // The paragraph just before the first list table ends the header'd section (section A).
+        Paragraph? before = null;
+        for (var e = firstListTable.PreviousSibling(); e != null; e = e.PreviousSibling())
+            if (e is Paragraph p) { before = p; break; }
+        if (before == null) return;
+
+        var sectA = (SectionProperties)mainSect.CloneNode(true); // keeps the title-block header
+        SetNextPageType(sectA);
+        var bpr = before.ParagraphProperties ??= new ParagraphProperties();
+        bpr.RemoveAllChildren<SectionProperties>();
+        bpr.Append(sectA);
+
+        // Empty header referenced by the list section.
+        var emptyHeader = main.AddNewPart<HeaderPart>();
+        emptyHeader.Header = new Header();
+        emptyHeader.Header.Save();
+        string emptyId = main.GetIdOfPart(emptyHeader);
+
+        var sectB = (SectionProperties)mainSect.CloneNode(true);
+        sectB.RemoveAllChildren<HeaderReference>();
+        SetNextPageType(sectB);
+        foreach (var t in new[] { HeaderFooterValues.Default, HeaderFooterValues.Even, HeaderFooterValues.First })
+            sectB.InsertAt(new HeaderReference { Type = t, Id = emptyId }, 0);
+
+        // A trailing paragraph after the last list table carries the blank-header list section.
+        lastListTable.InsertAfterSelf(new Paragraph(new ParagraphProperties(sectB)));
+    }
 
     // Old template: fill the pre-made list tables in document order. Every physical data row
     // is packed with the next sequential entry (no blank rows). When the data runs out, the
     // leftover empty rows are deleted and any wholly-unused trailing tables are removed, so
     // there are no blank gaps and the total page count drops accordingly.
-    private static int FillPreMadeTables(List<Table> tables, List<string[]> data)
+    private static int FillPreMadeTables(List<Table> tables, List<string[]> data, int pageBudget, int[] colWidths)
     {
         int idx = 0, tableNo = 0;
         foreach (var table in tables)
@@ -208,7 +369,7 @@ public static class BookletBuilder
 
             tableNo++;
             SetFaintBorders(table);
-            SetListColumnWidths(table);
+            SetListColumnWidths(table, colWidths);
 
             // Each table starts on its own page (the blank inter-table paragraphs that used
             // to cause spill/blank pages were removed).
@@ -225,7 +386,7 @@ public static class BookletBuilder
 
             // Row height adapts to the table's real row count so all its rows fill one page.
             int dataRowCount = Math.Max(1, rows.Count - 2);
-            int rowH = Math.Clamp(PageRowBudget / dataRowCount, 200, 340);
+            int rowH = Math.Clamp(pageBudget / dataRowCount, 200, 340);
 
             int r = 2;
             for (; r < rows.Count && idx < data.Count; r++)
@@ -254,7 +415,7 @@ public static class BookletBuilder
             // First, keep filling the LAST pre-made table (which usually has spare room on its
             // page) by cloning its rows, up to a full page — so the extras continue on the same
             // page instead of opening a new one.
-            ExtendTable(tables[tables.Count - 1], data, ref idx, RowsPerPage);
+            ExtendTable(tables[tables.Count - 1], data, ref idx, RowsPerPage, pageBudget);
 
             // Only if entries still remain do we add further full pages, cloned from a pre-made
             // table so the header/style is identical.
@@ -274,7 +435,7 @@ public static class BookletBuilder
                 }
 
                 int dataRowCount = Math.Max(1, crows.Count - 2);
-                int rowH = Math.Clamp(PageRowBudget / dataRowCount, 200, 340);
+                int rowH = Math.Clamp(pageBudget / dataRowCount, 200, 340);
 
                 int r = 2;
                 for (; r < crows.Count && idx < data.Count; r++)
@@ -302,7 +463,7 @@ public static class BookletBuilder
     // Append more data rows to an existing list table (cloning its last data row for identical
     // structure) until the data runs out or the table reaches maxDataRows. Row heights are then
     // recomputed uniformly so all rows still fit on one page.
-    private static void ExtendTable(Table table, List<string[]> data, ref int idx, int maxDataRows)
+    private static void ExtendTable(Table table, List<string[]> data, ref int idx, int maxDataRows, int pageBudget)
     {
         var dataRows = table.Elements<TableRow>().Skip(2).ToList(); // skip title + header
         if (dataRows.Count == 0) return;
@@ -321,7 +482,7 @@ public static class BookletBuilder
             current++;
         }
 
-        int rowH = Math.Clamp(PageRowBudget / Math.Max(1, current), 200, 340);
+        int rowH = Math.Clamp(pageBudget / Math.Max(1, current), 200, 340);
         foreach (var row in table.Elements<TableRow>().Skip(2))
             row.TableRowProperties = new TableRowProperties(
                 new TableRowHeight { Val = (uint)rowH, HeightType = HeightRuleValues.Exact });
@@ -334,11 +495,10 @@ public static class BookletBuilder
     // line. Extra width for those comes from the mostly-empty REMARKS column. Total unchanged.
     private static readonly int[] ListColWidths = { 557, 1720, 1720, 1148, 2015, 2240, 1172 };
     private const int RowsPerPage = 45;        // data entries per page
-    private const int FillRowHeight = 315;     // exact row height (twips) so 45 data rows fill the page
 
     // New template: build the Appendix A list tables (45 rows/page) from the Excel and
     // insert them right after the "CABLE TRAY SUPPORT LIST" heading.
-    private static int GenerateListTables(Body body, List<string[]> data)
+    private static int GenerateListTables(Body body, List<string[]> data, int pageBudget, int[] colWidths)
     {
         var heading = body.Descendants<Paragraph>().FirstOrDefault(p =>
             p.ParagraphProperties?.ParagraphStyleId?.Val?.Value == "appendix" &&
@@ -346,30 +506,40 @@ public static class BookletBuilder
             !p.InnerText.Contains("PAGEREF"));
         if (heading == null) return 0;
 
+        // Row height so RowsPerPage rows fill exactly one page of THIS template.
+        int rowHeight = Math.Clamp(pageBudget / RowsPerPage, 200, 340);
+
         OpenXmlElement anchor = heading;
-        int idx = 0, page = 0;
+        int idx = 0;
+        bool first = true;
         while (idx < data.Count)
         {
             var chunk = data.Skip(idx).Take(RowsPerPage).ToList();
             idx += chunk.Count;
-            // Every table starts on its own page and is padded to 45 rows so the page fills.
-            var table = BuildListTable(chunk, pageBreakBefore: true);
+            // The first table needs no page break — the list section break already starts it on a
+            // fresh page (below the APPENDIX A divider); the rest start their own page.
+            var table = BuildListTable(chunk, pageBreakBefore: !first, rowHeight, colWidths);
+            first = false;
             anchor.InsertAfterSelf(table);
             anchor = table;
-            page++;
         }
         return idx;
     }
 
-    private static Table BuildListTable(List<string[]> chunk, bool pageBreakBefore)
+    private static Table BuildListTable(List<string[]> chunk, bool pageBreakBefore, int rowHeight, int[] colWidths)
     {
         const string faint = "BFBFBF";
-        int totalW = ListColWidths.Sum();
+        int totalW = colWidths.Sum();
 
         var table = new Table(
             new TableProperties(
                 new TableWidth { Type = TableWidthUnitValues.Dxa, Width = totalW.ToString() },
                 new TableLayout { Type = TableLayoutValues.Fixed },
+                // Small cell padding so narrow columns (S.L., REVISION, REMARKS) fit their text
+                // on one line instead of wrapping and being clipped by the exact row height.
+                new TableCellMarginDefault(
+                    new TableCellLeftMargin { Width = 45, Type = TableWidthValues.Dxa },
+                    new TableCellRightMargin { Width = 45, Type = TableWidthValues.Dxa }),
                 new TableBorders(
                     new TopBorder { Val = BorderValues.Single, Size = 4, Color = faint },
                     new BottomBorder { Val = BorderValues.Single, Size = 4, Color = faint },
@@ -379,7 +549,7 @@ public static class BookletBuilder
                     new InsideVerticalBorder { Val = BorderValues.Single, Size = 4, Color = faint })));
 
         var grid = new TableGrid();
-        foreach (var w in ListColWidths) grid.Append(new GridColumn { Width = w.ToString() });
+        foreach (var w in colWidths) grid.Append(new GridColumn { Width = w.ToString() });
         table.Append(grid);
 
         // Title row: one merged cell spanning all 7 columns.
@@ -399,16 +569,16 @@ public static class BookletBuilder
         // and wraps). Used only for the new-template path; the old template clones its own rows.
         var headerRow = new TableRow();
         for (int c = 0; c < 7; c++)
-            headerRow.Append(MakeCell(ListHeaders[c], ListColWidths[c], bold: true, center: true, font: "16"));
+            headerRow.Append(MakeCell(ListHeaders[c], colWidths[c], bold: true, center: true, font: "16"));
         table.Append(headerRow);
 
         // Data rows (9pt, S.L. + REVISION centred), tall enough to fill the page.
         foreach (var entry in chunk)
         {
             var row = new TableRow(new TableRowProperties(
-                new TableRowHeight { Val = (uint)FillRowHeight, HeightType = HeightRuleValues.Exact }));
+                new TableRowHeight { Val = (uint)rowHeight, HeightType = HeightRuleValues.Exact }));
             for (int c = 0; c < 7; c++)
-                row.Append(MakeCell(c < entry.Length ? entry[c] : "", ListColWidths[c],
+                row.Append(MakeCell(c < entry.Length ? entry[c] : "", colWidths[c],
                     bold: false, center: c == 0 || c == 3, font: DataFontHalfPt));
             table.Append(row);
         }
@@ -540,21 +710,64 @@ public static class BookletBuilder
             var cells = row.Elements<TableCell>().ToList();
             if (cells.Count >= 5)
             {
-                SetCellText(cells[0], (i + 1).ToString());
-                SetCellText(cells[1], data[i][0]); // description
-                SetCellText(cells[2], data[i][1]); // material
-                SetCellText(cells[3], data[i][2]); // length / area
-                SetCellText(cells[4], data[i][3]); // weight
+                SetCellText(cells[0], (i + 1).ToString(), center: true);
+                SetCellText(cells[1], data[i][0], center: true); // description
+                SetCellText(cells[2], data[i][1], center: true); // material
+                SetCellText(cells[3], data[i][2], center: true); // length / area
+                SetCellText(cells[4], data[i][3], center: true); // weight
             }
             table.Append(row);
         }
 
-        // Total row (keep the template's "Total" label; set the weight from the BOM).
+        // Total row: a "TOTAL" label next to the summed weight (both centred to line up).
         var trow = (TableRow)templateTotal.CloneNode(true);
         var tcells = trow.Elements<TableCell>().ToList();
         if (tcells.Count >= 5 && !string.IsNullOrWhiteSpace(totalWeight))
-            SetCellText(tcells[4], totalWeight);
+        {
+            SetCellText(tcells[3], "TOTAL", center: true);
+            SetCellText(tcells[4], totalWeight, center: true);
+        }
         table.Append(trow);
+
+        KeepNoteWithTable(body, table);
+    }
+
+    // Keep the "MTO not inclusive…" note directly under the Material Statistics table (stop it
+    // spilling to the next page): drop the blank paragraph(s) between them and mark the table's
+    // paragraphs keep-with-next so Word keeps the table + note together on one page.
+    private static void KeepNoteWithTable(Body body, Table table)
+    {
+        var note = body.Descendants<Paragraph>()
+            .FirstOrDefault(p => p.InnerText.Contains("MTO not inclusive", StringComparison.OrdinalIgnoreCase));
+
+        for (var e = table.NextSibling(); e != null && e != note;)
+        {
+            var next = e.NextSibling();
+            if (e is Paragraph p && p.InnerText.Trim().Length == 0 && p.ParagraphProperties?.SectionProperties == null)
+                e.Remove();
+            e = next;
+        }
+
+        foreach (var para in table.Descendants<Paragraph>())
+        {
+            para.ParagraphProperties ??= new ParagraphProperties();
+            para.ParagraphProperties.KeepNext ??= new KeepNext();
+        }
+        if (note != null)
+        {
+            // Remove blank paragraphs between the note and the next "appendix" heading — otherwise
+            // one lands alone on a page and creates a blank divider page before Appendix A.
+            for (var e = note.NextSibling(); e != null;)
+            {
+                var next = e.NextSibling();
+                if (e is Paragraph ap && ap.ParagraphProperties?.ParagraphStyleId?.Val?.Value == "appendix") break;
+                if (e is Paragraph bp && bp.InnerText.Trim().Length == 0 && bp.ParagraphProperties?.SectionProperties == null)
+                    e.Remove();
+                e = next;
+            }
+            note.ParagraphProperties ??= new ParagraphProperties();
+            note.ParagraphProperties.KeepLines ??= new KeepLines();
+        }
     }
 
     // Round a numeric string to N decimals (removes float noise like 2063.2100000000028).
@@ -699,13 +912,19 @@ public static class BookletBuilder
             cell.GetFirstChild<TableCellProperties>()?.RemoveAllChildren<TableCellBorders>();
     }
 
-    private static void SetCellText(TableCell cell, string text, bool fitOneLine = false)
+    private static void SetCellText(TableCell cell, string text, bool fitOneLine = false, bool center = false)
     {
         var para = cell.Elements<Paragraph>().FirstOrDefault();
         if (para == null)
         {
             para = new Paragraph();
             cell.Append(para);
+        }
+
+        if (center)
+        {
+            para.ParagraphProperties ??= new ParagraphProperties();
+            para.ParagraphProperties.Justification = new Justification { Val = JustificationValues.Center };
         }
 
         // Preserve any existing run formatting in the cell.
