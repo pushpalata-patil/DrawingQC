@@ -102,6 +102,10 @@ public static class BookletBuilder
         if (!string.IsNullOrWhiteSpace(input.BomPath) && File.Exists(input.BomPath))
             FillMaterialStatistics(body, input.BomPath!);
 
+        // Reclaim the empty vertical gaps in the front matter (sections 1-4) so a taller Material
+        // Statistics table (more BOM rows) still fits its section on the same page.
+        CompactFrontMatter(body);
+
         // Fill the Appendix A support list. Older templates ship pre-made "CABLE TRAY
         // SUPPORTS" tables; newer templates have none, so we generate them from the data.
         var listTables = body.Descendants<Table>()
@@ -691,6 +695,50 @@ public static class BookletBuilder
     // Fill the "Material Statistics for Released Supports" table from a BOM Excel
     // (columns Description | Material | Length/Area | Weight; SL No auto-numbered; the
     // Total row's weight is taken from the BOM).
+    // Shrink the blank paragraphs in the front matter (everything before the Material Statistics
+    // heading) so their empty gaps don't waste a page — reclaiming enough space for a taller BOM
+    // table + note to stay on the same page.
+    private static void CompactFrontMatter(Body body)
+    {
+        var heading = body.Descendants<Paragraph>().FirstOrDefault(p =>
+            p.InnerText.Contains("MATERIAL STATISTICS FOR RELEASED", StringComparison.OrdinalIgnoreCase) &&
+            !p.InnerText.Contains("PAGEREF"));
+        if (heading == null) return;
+
+        // Only compact between Section 1 (Scope) and the Material Statistics heading — NOT the gap
+        // before Section 1 (which would pull the front matter onto the Contents page).
+        var scope = body.Elements<Paragraph>().FirstOrDefault(p =>
+            p.ParagraphProperties?.ParagraphStyleId?.Val?.Value == "Heading1" &&
+            p.InnerText.Contains("SCOPE OF THE DOCUMENT", StringComparison.OrdinalIgnoreCase));
+        if (scope == null) return;
+
+        bool started = false;
+        foreach (var p in body.Elements<Paragraph>())
+        {
+            if (p == scope) started = true;
+            if (!started) continue;
+            if (p == heading) break;
+            if (p.ParagraphProperties?.SectionProperties != null) continue;
+            var pPr = p.ParagraphProperties ??= new ParagraphProperties();
+
+            if (p.InnerText.Trim().Length == 0)
+            {
+                // Blank spacer paragraph — collapse it almost completely.
+                pPr.SpacingBetweenLines = new SpacingBetweenLines { Before = "0", After = "0", Line = "80", LineRule = LineSpacingRuleValues.Exact };
+                var mark = pPr.ParagraphMarkRunProperties ??= new ParagraphMarkRunProperties();
+                mark.RemoveAllChildren<FontSize>();
+                mark.AppendChild(new FontSize { Val = "8" }); // 4pt
+            }
+            else
+            {
+                // Content line (Section 2 has many) — tighten the inter-paragraph gap so
+                // Section 4's table + TOTAL + note stay on the same page. Line spacing is
+                // left to single so text is never clipped.
+                pPr.SpacingBetweenLines = new SpacingBetweenLines { Before = "0", After = "20", Line = "240", LineRule = LineSpacingRuleValues.Auto };
+            }
+        }
+    }
+
     private static void FillMaterialStatistics(Body body, string bomPath)
     {
         var (data, totalWeight) = ReadBom(bomPath);
@@ -756,11 +804,16 @@ public static class BookletBuilder
             e = next;
         }
 
-        foreach (var para in table.Descendants<Paragraph>())
-        {
-            para.ParagraphProperties ??= new ParagraphProperties();
-            para.ParagraphProperties.KeepNext ??= new KeepNext();
-        }
+        // Keep only the table's LAST row with the note (so the note doesn't drift to the next
+        // page) — NOT the whole table, which would move the entire table as a block and shift
+        // Section 4 onto its own page. Everything else flows naturally into the space above.
+        var lastRow = table.Elements<TableRow>().LastOrDefault();
+        if (lastRow != null)
+            foreach (var para in lastRow.Descendants<Paragraph>())
+            {
+                para.ParagraphProperties ??= new ParagraphProperties();
+                para.ParagraphProperties.KeepNext ??= new KeepNext();
+            }
         if (note != null)
         {
             // Remove blank paragraphs between the note and the next "appendix" heading — otherwise

@@ -410,6 +410,113 @@
      </section>
    </div><!-- /view-mto -->
 
+   <div id="view-conslist" class="view hidden">
+     <style>
+       #view-conslist .cl-sub { color:var(--muted); margin:-4px 0 18px; }
+       #view-conslist .cl-bar { display:flex; flex-wrap:wrap; gap:14px; align-items:flex-end; margin-bottom:18px; }
+       #view-conslist .cl-field { display:flex; flex-direction:column; gap:6px; }
+       #view-conslist .cl-field label { font-weight:600; font-size:12px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); }
+       #view-conslist select, #view-conslist .cl-add input {
+         border:1px solid var(--border); border-radius:8px; padding:9px 11px; font:inherit; font-size:14px; color:var(--ink); background:#fff; min-width:180px; }
+       #view-conslist select:focus, #view-conslist .cl-add input:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(79,70,229,.14); }
+       #view-conslist .cl-add { display:flex; gap:8px; align-items:center; }
+       #view-conslist .cl-inline-err { color:#b91c1c; font-size:12.5px; margin-top:6px; }
+       #view-conslist .cl-inline-err.ok { color:#166534; }
+       #view-conslist .cl-btn { background:var(--grad); color:#fff; border:none; border-radius:9px; padding:9px 16px; font-size:14px; font-weight:600; cursor:pointer; white-space:nowrap; }
+       #view-conslist .cl-btn.ghost { background:#fff; color:var(--ink); border:1px solid var(--border); }
+       #view-conslist .cl-btn.cl-del { color:#b91c1c; border-color:#f3c2c2; }
+       #view-conslist .cl-btn.cl-del:hover { background:#fef2f2; }
+       #view-conslist .cl-btn:disabled { opacity:.55; cursor:default; }
+       #view-conslist .cl-drops { display:flex; gap:16px; flex-wrap:wrap; }
+       #view-conslist .cl-drop { flex:1; min-width:280px; border:2px dashed var(--border); border-radius:14px; padding:22px; text-align:center; background:#fbfbfd; transition:.15s; cursor:pointer; }
+       #view-conslist .cl-drop:hover, #view-conslist .cl-drop.drag { border-color:var(--accent); background:#f4f3ff; }
+       #view-conslist .cl-drop h3 { margin:8px 0 4px; font-size:15px; color:var(--ink); }
+       #view-conslist .cl-drop .cl-tag { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--accent); }
+       #view-conslist .cl-drop p { color:var(--faint); font-size:12.5px; margin:4px 0 0; }
+       #view-conslist .cl-drop .cl-ic { color:var(--accent); }
+       #view-conslist .cl-cards { display:flex; gap:14px; flex-wrap:wrap; margin:20px 0; }
+       #view-conslist .cl-card { flex:1; min-width:150px; background:#fff; border:1px solid var(--border); border-radius:12px; padding:14px 16px; }
+       #view-conslist .cl-num { font-size:24px; font-weight:800; color:var(--ink); }
+       #view-conslist .cl-cap { font-size:12.5px; color:var(--muted); margin-top:3px; }
+       #view-conslist .cl-actions { display:flex; gap:12px; flex-wrap:wrap; margin:6px 0 18px; }
+       #view-conslist .cl-results { background:#fff; border:1px solid var(--border); border-radius:14px; padding:16px; overflow-x:auto; }
+       #view-conslist table { width:auto; border-collapse:collapse; font-size:13.5px; }
+       #view-conslist td { padding:8px 26px 8px 10px; border-bottom:1px solid var(--border); color:var(--ink); white-space:nowrap; }
+       #view-conslist td.ty { font-weight:700; }
+       #view-conslist td.ty.Excel { color:#166534; }
+       #view-conslist td.ty.PDF { color:#b45309; }
+       #view-conslist tr.cl-datehdr td { background:#eef2f8; font-weight:700; color:var(--ink); letter-spacing:.02em; }
+       #view-conslist tr.cl-colhdr td { font-size:11.5px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); font-weight:600; border-bottom:1px solid var(--border); }
+       #view-conslist .cl-empty { color:var(--faint); text-align:center; padding:22px; font-size:14px; }
+       #view-conslist .cl-msg { margin-top:12px; padding:10px 12px; border-radius:8px; font-size:14px; }
+       #view-conslist .cl-msg.ok { background:#ecfdf5; color:#166534; }
+       #view-conslist .cl-msg.err { background:#fef2f2; color:#b91c1c; }
+     </style>
+
+     <div class="mhead">
+       <h1>ConsList</h1>
+       <p class="cl-sub"><span class="client-tag">S2NERGY</span> Add Excel &amp; PDF daily per platform — each is merged, datewise, into one running consolidated file to share with the client (Rev 1, 2, 3…N).</p>
+     </div>
+
+     <div class="cl-bar">
+       <div class="cl-field">
+         <label for="cl-project">Project</label>
+         <div class="cl-add">
+           <select id="cl-project"></select>
+           <button type="button" class="cl-btn ghost cl-del" id="cl-delproj" title="Remove this project and its data">Delete</button>
+         </div>
+       </div>
+       <div class="cl-field">
+         <label for="cl-category">Type</label>
+         <select id="cl-category">
+           <option value="" disabled selected>Select type</option>
+           <option value="Internal">Internal</option>
+           <option value="External">External</option>
+         </select>
+       </div>
+       <div class="cl-field">
+         <label>Add a new project</label>
+         <div class="cl-add">
+           <input type="text" id="cl-newproj" placeholder="e.g. RP7N" autocomplete="off">
+           <button type="button" class="cl-btn ghost" id="cl-addproj">Add project</button>
+         </div>
+         <div id="cl-proj-err" class="cl-inline-err" style="display:none;"></div>
+       </div>
+     </div>
+
+     <div class="cl-drops">
+       <div class="cl-drop" id="cl-drop-excel">
+         <div class="cl-ic"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="m9 13 6 6M15 13l-6 6"/></svg></div>
+         <span class="cl-tag">Typical supports</span>
+         <h3>Add Excel</h3>
+         <p>Drop .xlsx / .xls here, or click to choose. Rows are appended datewise into the consolidated Excel.</p>
+         <input type="file" id="cl-file-excel" accept=".xlsx,.xls" multiple hidden>
+       </div>
+       <div class="cl-drop" id="cl-drop-pdf">
+         <div class="cl-ic"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 15h6M9 18h6M9 12h2"/></svg></div>
+         <span class="cl-tag">Unique supports</span>
+         <h3>Add PDF</h3>
+         <p>Drop .pdf here, or click to choose. Pages are appended into the consolidated PDF.</p>
+         <input type="file" id="cl-file-pdf" accept=".pdf" multiple hidden>
+       </div>
+     </div>
+
+     <div class="cl-cards" id="cl-cards"></div>
+
+     <div class="cl-actions">
+       <button type="button" class="cl-btn" id="cl-dl-excel">Download consolidated Excel</button>
+       <button type="button" class="cl-btn" id="cl-dl-pdf">Download consolidated PDF</button>
+     </div>
+
+     <div id="cl-msg" class="cl-msg" style="display:none;"></div>
+
+     <div class="cl-results">
+       <table>
+         <tbody id="cl-log"><tr><td colspan="3" class="cl-empty">No files added yet for this platform.</td></tr></tbody>
+       </table>
+     </div>
+   </div><!-- /view-conslist -->
+
    <div id="view-booklet" class="view hidden">
      <div class="mhead">
        <h1>Booklet</h1>
@@ -779,7 +886,7 @@
     // --- Clients, their tools, and view switching ---
     // Add a client's tools here to make them appear in the tool-tab row.
     const TOOLS = {
-      S2NERGY: [ { id: 'qc', label: 'QC Check' }, { id: 'mto', label: 'MTO Check' } ],
+      S2NERGY: [ { id: 'qc', label: 'QC Check' }, { id: 'mto', label: 'MTO Check' }, { id: 'conslist', label: 'ConsList' } ],
       QATAR:   [],
       UAE:     [ { id: 'booklet', label: 'Booklet' } ],
       KBR:     [ { id: 'tagreport', label: 'Tagwise Delivery Report' } ],
@@ -829,6 +936,8 @@
       // The Status key legend only applies to QC Check — hide it for every other tool.
       const sk = document.getElementById('statusKey');
       if (sk) sk.style.display = (view === 'qc') ? '' : 'none';
+      // ConsList loads its live state whenever it becomes the active tool.
+      if (view === 'conslist' && window.loadConsList) window.loadConsList();
       // Corner logo shows on every page except the Home welcome screen.
       const cl = document.getElementById('cornerLogo');
       if (cl) cl.style.display = (view === 'home') ? 'none' : '';
@@ -1053,6 +1162,168 @@
         }
       });
     })();
+  </script>
+
+  <!-- ConsList (S2NERGY): daily Excel/PDF consolidation per platform -->
+  <script>
+  (function () {
+    const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+    const $ = id => document.getElementById(id);
+    let state = null;
+
+    function msg(text, kind) {
+      const m = $('cl-msg'); if (!m) return;
+      if (!text) { m.style.display = 'none'; return; }
+      m.textContent = text; m.className = 'cl-msg ' + (kind || 'ok'); m.style.display = 'block';
+    }
+
+    async function loadConsList() {
+      try {
+        const res = await fetch('/api/conslist/state');
+        if (res.status === 401) return;
+        state = await res.json();
+        const sel = $('cl-project'); if (!sel) return;
+        const prev = sel.value;
+        sel.innerHTML = '';
+        const ph = document.createElement('option');
+        ph.value = ''; ph.textContent = 'Select project no'; ph.disabled = true; ph.selected = true;
+        sel.appendChild(ph);
+        (state.projects || []).forEach(p => {
+          const o = document.createElement('option'); o.value = p; o.textContent = p; sel.appendChild(o);
+        });
+        sel.value = (prev && state.projects.includes(prev)) ? prev : '';
+        render();
+      } catch (e) { msg('Could not load ConsList: ' + e.message, 'err'); }
+    }
+    window.loadConsList = loadConsList;
+
+    function current() {
+      if (!state) return null;
+      const p = $('cl-project').value, c = $('cl-category').value;
+      const d = (state.data && state.data[p] && state.data[p][c]) || null;
+      return { p, c, d };
+    }
+
+    const card = (n, cap) => '<div class="cl-card"><div class="cl-num">' + esc(n) + '</div><div class="cl-cap">' + esc(cap) + '</div></div>';
+
+    function render() {
+      const cur = current(); const cards = $('cl-cards'), log = $('cl-log');
+      if (!cards || !log) return;
+      if (!cur || !cur.d) { cards.innerHTML = ''; log.innerHTML = '<tr><td colspan="3" class="cl-empty">No files added yet for this platform.</td></tr>'; return; }
+      const d = cur.d;
+      cards.innerHTML =
+        card(d.excelFiles, 'Excel files added') +
+        card(d.excelRows, 'Rows · typical supports') +
+        card(d.pdfFiles, 'PDF files added') +
+        card(d.pdfPages, 'Pages · unique supports') +
+        card('Rev ' + d.excelRev, 'Excel revisions shared') +
+        card('Rev ' + d.pdfRev, 'PDF revisions shared');
+      if (!d.log || !d.log.length) { log.innerHTML = '<tr><td colspan="3" class="cl-empty">No files added yet for this platform.</td></tr>'; return; }
+      // Group by date — the date sits once above the column labels for that day's files.
+      let html = '', lastDate = null;
+      d.log.forEach(e => {
+        if (e.date !== lastDate) {
+          html += '<tr class="cl-datehdr"><td colspan="3">' + esc(e.date) + '</td></tr>' +
+            '<tr class="cl-colhdr"><td>Type</td><td>File</td><td>Rows / Pages</td></tr>';
+          lastDate = e.date;
+        }
+        html += '<tr><td class="ty ' + esc(e.type) + '">' + esc(e.type) +
+          '</td><td>' + esc(e.name) + '</td><td>' + e.count + '</td></tr>';
+      });
+      log.innerHTML = html;
+    }
+
+    async function upload(files) {
+      const cur = current();
+      if (!cur || !cur.p) { msg('Select a project first.', 'err'); return; }
+      if (!cur.c) { msg('Select a type (Internal / External) first.', 'err'); return; }
+      if (!files || !files.length) return;
+      const fd = new FormData();
+      fd.append('platform', cur.p); fd.append('category', cur.c);
+      for (const f of files) fd.append('files', f, f.name);
+      msg('Adding ' + files.length + ' file(s)…', 'ok');
+      try {
+        const res = await fetch('/api/conslist/add', { method: 'POST', body: fd });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) { msg(data.error || data.detail || 'Add failed.', 'err'); return; }
+        let s = 'Added: ' + data.excelFiles + ' Excel (' + data.excelRows + ' rows), ' + data.pdfFiles + ' PDF (' + data.pdfPages + ' pages).';
+        const bad = data.errors && data.errors.length;
+        if (bad) s += ' — Skipped: ' + data.errors.join('; ');
+        msg(s, bad ? 'err' : 'ok');
+        await loadConsList();
+      } catch (e) { msg('Add failed: ' + e.message, 'err'); }
+    }
+
+    function wireDrop(zoneId, inputId, accept) {
+      const zone = $(zoneId), input = $(inputId); if (!zone) return;
+      zone.addEventListener('click', () => input.click());
+      input.addEventListener('change', () => { upload(input.files); input.value = ''; });
+      ['dragenter','dragover'].forEach(ev => zone.addEventListener(ev, e => { e.preventDefault(); zone.classList.add('drag'); }));
+      ['dragleave','drop'].forEach(ev => zone.addEventListener(ev, e => { e.preventDefault(); zone.classList.remove('drag'); }));
+      zone.addEventListener('drop', e => {
+        const files = [...(e.dataTransfer.files || [])].filter(f => accept.some(a => f.name.toLowerCase().endsWith(a)));
+        if (!files.length) { msg('Please drop ' + accept.join(' / ') + ' files here.', 'err'); return; }
+        upload(files);
+      });
+    }
+
+    function download(type) {
+      const cur = current();
+      if (!cur || !cur.p) { msg('Select a project first.', 'err'); return; }
+      if (!cur.c) { msg('Select a type (Internal / External) first.', 'err'); return; }
+      const d = cur.d;
+      if (type === 'excel' && (!d || !d.hasExcel)) { msg('No Excel added yet for this platform.', 'err'); return; }
+      if (type === 'pdf' && (!d || !d.hasPdf)) { msg('No PDF added yet for this platform.', 'err'); return; }
+      window.location.href = '/api/conslist/download?platform=' + encodeURIComponent(cur.p) +
+        '&category=' + encodeURIComponent(cur.c) + '&type=' + type;
+      setTimeout(loadConsList, 1500); // revision bumped server-side
+    }
+
+    function init() {
+      if (!$('cl-project')) return;
+      $('cl-project').addEventListener('change', render);
+      $('cl-category').addEventListener('change', render);
+      wireDrop('cl-drop-excel', 'cl-file-excel', ['.xlsx', '.xls']);
+      wireDrop('cl-drop-pdf', 'cl-file-pdf', ['.pdf']);
+      $('cl-dl-excel').addEventListener('click', () => download('excel'));
+      $('cl-dl-pdf').addEventListener('click', () => download('pdf'));
+      const projNote = (t, ok) => {
+        const el = $('cl-proj-err'); if (!el) return;
+        el.classList.toggle('ok', !!ok);
+        if (!t) { el.style.display = 'none'; el.textContent = ''; } else { el.textContent = t; el.style.display = 'block'; }
+      };
+      $('cl-newproj').addEventListener('input', () => projNote(''));
+      $('cl-addproj').addEventListener('click', async () => {
+        const name = $('cl-newproj').value.trim();
+        if (!name) { projNote('Enter a project number.'); $('cl-newproj').focus(); return; }
+        try {
+          const res = await fetch('/api/conslist/project', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) { projNote(data.error || 'Could not add project.'); return; }
+          $('cl-newproj').value = '';
+          await loadConsList();
+          $('cl-project').value = name; render();
+          projNote('Project "' + name + '" added.', true);
+        } catch (e) { projNote('Could not add project: ' + e.message); }
+      });
+
+      $('cl-delproj').addEventListener('click', async () => {
+        const name = $('cl-project').value;
+        if (!name) { msg('Select a project to delete.', 'err'); return; }
+        if (!confirm('Delete project "' + name + '"?\n\nThis permanently removes it and its consolidated Excel/PDF (Internal and External).')) return;
+        try {
+          const res = await fetch('/api/conslist/project/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) { msg(data.error || 'Could not delete project.', 'err'); return; }
+          await loadConsList();
+          msg('Project "' + name + '" deleted.', 'ok');
+        } catch (e) { msg('Could not delete project: ' + e.message, 'err'); }
+      });
+    }
+
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+    else init();
+  })();
   </script>
 
   <style>

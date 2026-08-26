@@ -14,12 +14,12 @@ builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(o =>
 
 var app = builder.Build();
 
-// Locally: keep http://localhost:3000 exactly as before.
+// Locally: serve on http://localhost:5080 (3000 is used by another project).
 // When a hosting platform (e.g. Render) provides a PORT, bind to that instead.
 app.Urls.Clear();
 var hostPort = Environment.GetEnvironmentVariable("PORT");
 app.Urls.Add(string.IsNullOrEmpty(hostPort)
-    ? "http://localhost:3000"
+    ? "http://localhost:5080"
     : $"http://0.0.0.0:{hostPort}");
 
 app.UseDefaultFiles();
@@ -196,7 +196,10 @@ app.MapPost("/api/analyze", async (HttpRequest request) =>
     }
     catch (Exception ex)
     {
-        return Results.Problem($"Failed to analyze zip: {ex.Message}");
+        Console.Error.WriteLine("[/api/analyze] FAILED: " + ex);
+        var msg = string.IsNullOrWhiteSpace(ex.Message) ? ex.GetType().Name : ex.Message;
+        if (ex.InnerException != null) msg += " — " + ex.InnerException.Message;
+        return Results.Problem($"Failed to analyze zip: {msg}");
     }
     finally
     {
@@ -384,6 +387,91 @@ app.MapPost("/api/kbr/tagreport", async (HttpRequest request) =>
     }
 });
 
+// ---------- ConsList (S2NERGY): daily Excel/PDF consolidation per platform ----------
+
+// Current state: projects + per platform/category totals and the datewise add log.
+app.MapGet("/api/conslist/state", (HttpRequest request) =>
+{
+    if (CurrentUser(request) == null)
+        return Results.Json(new { error = "Please sign in first." }, statusCode: 401);
+    return Results.Ok(DrawingQC.Web.ConsList.State());
+});
+
+// Add a new project / platform number.
+app.MapPost("/api/conslist/project", (HttpRequest request, ConsProjectDto dto) =>
+{
+    if (CurrentUser(request) == null)
+        return Results.Json(new { error = "Please sign in first." }, statusCode: 401);
+    var (ok, err) = DrawingQC.Web.ConsList.AddProject(dto.name);
+    return ok ? Results.Ok(new { ok = true }) : Results.BadRequest(new { error = err });
+});
+
+// Remove a project / platform and delete its stored consolidation.
+app.MapPost("/api/conslist/project/delete", (HttpRequest request, ConsProjectDto dto) =>
+{
+    if (CurrentUser(request) == null)
+        return Results.Json(new { error = "Please sign in first." }, statusCode: 401);
+    var (ok, err) = DrawingQC.Web.ConsList.RemoveProject(dto.name);
+    return ok ? Results.Ok(new { ok = true }) : Results.BadRequest(new { error = err });
+});
+
+// Add a batch of daily files (Excel -> typical supports, PDF -> unique supports) to a platform/category.
+app.MapPost("/api/conslist/add", async (HttpRequest request) =>
+{
+    if (CurrentUser(request) == null)
+        return Results.Json(new { error = "Please sign in first." }, statusCode: 401);
+    if (!request.HasFormContentType)
+        return Results.BadRequest(new { error = "Expected a multipart form upload." });
+
+    var form = await request.ReadFormAsync();
+    string platform = form["platform"].ToString().Trim();
+    string category = form["category"].ToString().Trim();
+    if (string.IsNullOrWhiteSpace(platform))
+        return Results.BadRequest(new { error = "No platform selected." });
+    var files = form.Files.GetFiles("files");
+    if (files.Count == 0)
+        return Results.BadRequest(new { error = "No files were uploaded." });
+
+    var temps = new List<(string name, string path)>();
+    try
+    {
+        foreach (var f in files)
+        {
+            if (f.Length == 0) continue;
+            var tmp = Path.Combine(Path.GetTempPath(), $"cons_{Guid.NewGuid():N}{Path.GetExtension(f.FileName)}");
+            await using (var fs = File.Create(tmp)) await f.CopyToAsync(fs);
+            temps.Add((f.FileName, tmp));
+        }
+
+        var (rows, pages, ef, pf, errors) = await Task.Run(() =>
+            DrawingQC.Web.ConsList.Add(platform, category, temps.Select(t => (t.name, t.path))));
+
+        return Results.Ok(new { ok = true, excelRows = rows, pdfPages = pages, excelFiles = ef, pdfFiles = pf, errors });
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem("Failed to add files: " + (string.IsNullOrWhiteSpace(ex.Message) ? ex.GetType().Name : ex.Message));
+    }
+    finally
+    {
+        foreach (var t in temps) { try { File.Delete(t.path); } catch { } }
+    }
+});
+
+// Download the consolidated Excel or PDF (bumps the revision — each share = the next Rev N).
+app.MapGet("/api/conslist/download", (HttpRequest request, string platform, string category, string type) =>
+{
+    if (CurrentUser(request) == null)
+        return Results.Json(new { error = "Please sign in first." }, statusCode: 401);
+
+    var (bytes, fileName, _, err) = DrawingQC.Web.ConsList.Download(platform, category, type);
+    if (bytes == null) return Results.BadRequest(new { error = err });
+    var ctype = type.Equals("excel", StringComparison.OrdinalIgnoreCase)
+        ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        : "application/pdf";
+    return Results.File(bytes, ctype, fileName);
+});
+
 app.Run();
 
 // An input may arrive as an uploaded file (<name>File) or as a local path (<name>Path).
@@ -432,3 +520,4 @@ record AdminRoleDto(string? id, string? role);
 record AdminResetDto(string? id, string? password);
 record AdminIdDto(string? id);
 record RegToggleDto(bool open);
+record ConsProjectDto(string? name);
