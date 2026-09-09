@@ -1,3 +1,9 @@
+databases:
+  # Managed PostgreSQL so team data (accounts, ConsList, run history) survives redeploys.
+  # Free plan is fine to start; note Render free databases expire after 90 days.
+  - name: drawingqc-db
+    plan: free
+
 services:
   - type: web
     name: drawingqc-web
@@ -7,3 +13,9 @@ services:
     dockerContext: .
     healthCheckPath: /
     autoDeploy: true
+    envVars:
+      # Switches the app into PostgreSQL mode; Db.cs parses this postgres:// URL form.
+      - key: SUPPORTAUTOMATION_DB
+        fromDatabase:
+          name: drawingqc-db
+          property: connectionString

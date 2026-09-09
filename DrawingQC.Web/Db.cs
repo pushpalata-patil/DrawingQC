@@ -16,10 +16,37 @@ namespace DrawingQC.Web;
 /// </summary>
 public static class Db
 {
-    private static readonly string? ConnString = Environment.GetEnvironmentVariable("SUPPORTAUTOMATION_DB");
+    private static readonly string? ConnString = Normalize(Environment.GetEnvironmentVariable("SUPPORTAUTOMATION_DB"));
 
     /// <summary>True when a PostgreSQL connection string is configured; otherwise the app stays file-based.</summary>
     public static bool Enabled => !string.IsNullOrWhiteSpace(ConnString);
+
+    // Accept both Npgsql key-value strings and the postgres://user:pass@host:port/db URL form that
+    // managed hosts (Render, Railway, Heroku, …) hand out, so SUPPORTAUTOMATION_DB can be either.
+    private static string? Normalize(string? cs)
+    {
+        if (string.IsNullOrWhiteSpace(cs)) return cs;
+        if (!cs.StartsWith("postgres://", StringComparison.OrdinalIgnoreCase) &&
+            !cs.StartsWith("postgresql://", StringComparison.OrdinalIgnoreCase))
+            return cs;
+        try
+        {
+            var uri = new Uri(cs);
+            var userInfo = uri.UserInfo.Split(':', 2);
+            var b = new NpgsqlConnectionStringBuilder
+            {
+                Host = uri.Host,
+                Port = uri.Port > 0 ? uri.Port : 5432,
+                Username = Uri.UnescapeDataString(userInfo[0]),
+                Password = userInfo.Length > 1 ? Uri.UnescapeDataString(userInfo[1]) : "",
+                Database = uri.AbsolutePath.TrimStart('/'),
+                SslMode = SslMode.Prefer,
+                TrustServerCertificate = true,
+            };
+            return b.ConnectionString;
+        }
+        catch { return cs; }
+    }
 
     public static NpgsqlConnection Open()
     {
