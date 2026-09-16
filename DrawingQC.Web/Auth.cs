@@ -338,6 +338,20 @@ public static class Auth
 
     private static byte[] LoadOrCreateKey()
     {
+        // Hosted (PostgreSQL) mode: the key lives in the database so sessions survive redeploys,
+        // restarts and spin-downs on an ephemeral filesystem. Falls back to the local key file.
+        if (Db.Enabled)
+        {
+            try
+            {
+                var stored = Db.GetSetting("AuthKey");
+                if (!string.IsNullOrWhiteSpace(stored)) return Convert.FromBase64String(stored);
+                var fresh = RandomNumberGenerator.GetBytes(32);
+                Db.SetSetting("AuthKey", Convert.ToBase64String(fresh));
+                return fresh;
+            }
+            catch (Exception ex) { Console.Error.WriteLine("[Auth] could not load the session key from the DB: " + ex.Message); }
+        }
         try
         {
             Directory.CreateDirectory(DataDir);

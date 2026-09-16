@@ -100,11 +100,50 @@ public static class AutoCadSync
         return dataRows;
     }
 
+    /// <summary>What the agent can see: is AutoCAD / Plant 3D running, which product, which drawing.</summary>
+    public sealed record AcadStatus(bool Running, string? Product, string? Document, string? Error);
+
+    /// <summary>Probe the running AutoCAD (any vertical, incl. Plant 3D) without changing anything.</summary>
+    public static Task<AcadStatus> StatusAsync()
+    {
+        var tcs = new TaskCompletionSource<AcadStatus>();
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                dynamic app = GetRunningAutoCad();
+                string? product = null, document = null;
+                try { product = (string?)app.Caption; } catch { }
+                if (string.IsNullOrWhiteSpace(product))
+                {
+                    try { product = ((string?)app.Name ?? "AutoCAD") + " " + (string?)app.Version; } catch { product = "AutoCAD"; }
+                }
+                // Caption looks like "Autodesk AutoCAD Plant 3D 2024 - [P-101.dwg]"; keep the product part.
+                int br = product!.IndexOf(" - [", StringComparison.Ordinal);
+                if (br > 0) product = product[..br];
+                product = product.Replace("Autodesk ", "").Trim();
+                try { document = (string?)app.ActiveDocument.Name; } catch { }
+                tcs.SetResult(new AcadStatus(true, product, document, null));
+            }
+            catch (Exception ex) { tcs.SetResult(new AcadStatus(false, null, null, ex.Message)); }
+        })
+        { IsBackground = true };
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        return tcs.Task;
+    }
+
     private static object GetRunningAutoCad()
     {
-        // Version-independent ProgID first, then the versions installed on this machine
-        // (R26.0 = AutoCAD 2027, R24.3 = AutoCAD 2024).
-        string[] progIds = { "AutoCAD.Application", "AutoCAD.Application.26", "AutoCAD.Application.24" };
+        // Version-independent ProgID first, then the versions installed on this machine.
+        // AutoCAD Plant 3D registers the same ProgIDs as plain AutoCAD (it is an AutoCAD vertical):
+        // R26.0 = 2027, R25.1 = 2026, R25.0 = 2025, R24.3 = 2024, R24.2 = 2023, R24.1 = 2022, R24.0 = 2021.
+        string[] progIds =
+        {
+            "AutoCAD.Application",
+            "AutoCAD.Application.26", "AutoCAD.Application.25.1", "AutoCAD.Application.25",
+            "AutoCAD.Application.24.3", "AutoCAD.Application.24.2", "AutoCAD.Application.24.1", "AutoCAD.Application.24",
+        };
         foreach (string progId in progIds)
         {
             try

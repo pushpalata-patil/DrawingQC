@@ -1,6 +1,7 @@
 databases:
   # Managed PostgreSQL so team data (accounts, ConsList, run history) survives redeploys.
-  # Free plan is fine to start; note Render free databases expire after 90 days.
+  # Free plan is fine to start; note Render free databases expire 30 days after creation
+  # (14-day grace period, then deleted). Upgrade the plan if the team data matters.
   - name: drawingqc-db
     plan: free
 

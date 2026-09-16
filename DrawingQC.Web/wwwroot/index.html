@@ -274,6 +274,23 @@
       <div class="legend-row"><span class="swatch d"></span><span><b>Duplicate</b> — number seen on 2+ sheets</span></div>
     </div>
 
+    <!-- Local Agent: the Windows companion on the user's PC that bridges to AutoCAD / Plant 3D and Word. -->
+    <div class="side-section" id="agentBox">
+      <style>
+        #agentBox .agent-row { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: #e2e8f0; }
+        #agentBox .agent-dot { width: 9px; height: 9px; border-radius: 50%; background: #94a3b8; flex: none; box-shadow: 0 0 0 3px rgba(148,163,184,.2); }
+        #agentBox .agent-dot.on { background: #22c55e; box-shadow: 0 0 0 3px rgba(34,197,94,.25); }
+        #agentBox .agent-dot.off { background: #ef4444; box-shadow: 0 0 0 3px rgba(239,68,68,.2); }
+        #agentBox .agent-sub { font-size: 11.5px; color: #94a3b8; margin: 6px 0 0 17px; line-height: 1.45; word-break: break-word; }
+        #agentBox .agent-link { display: inline-block; margin: 8px 0 0 17px; font-size: 12px; color: #c7d2fe; text-decoration: underline; cursor: pointer; }
+        #agentBox .agent-link:hover { color: #fff; }
+      </style>
+      <div class="side-title">Local agent</div>
+      <div class="agent-row"><span class="agent-dot" id="agentDot"></span><span id="agentText">Checking…</span></div>
+      <div class="agent-sub" id="agentSub"></div>
+      <a class="agent-link" id="agentLink" href="/agent/DrawingQC.Agent.zip" style="display:none" title="Small Windows helper: run it on your PC to use AutoCAD sync and Booklet from this site">⬇ Download agent (Windows)</a>
+    </div>
+
     <div class="side-bottom">
       <div class="side-user" id="sideUser" onclick="openProfile()" style="display:none">
         <span class="su-avatar" id="suAvatar"></span>
@@ -596,7 +613,7 @@
          #view-booklet .msg.ok a { color: inherit; font-weight: 700; }
        </style>
 
-       <p class="bk-note">Fills the <b>revision block</b> (below) and the Appendix A table (from the Excel, 45 rows/page) into the Word template, then appends the drawings PDF after Appendix B — producing one merged PDF. Runs on the local Windows app (needs Microsoft Word). Provide each file as a path <i>or</i> upload it.</p>
+       <p class="bk-note">Fills the <b>revision block</b> (below) and the Appendix A table (from the Excel, 45 rows/page) into the Word template, then appends the drawings PDF after Appendix B — producing one merged PDF. Needs Microsoft Word, so it runs on <b>your PC</b> through the Local Agent (see the sidebar) when the site is hosted, or directly when the app runs locally. Provide each file as a path (agent / local only) <i>or</i> upload it.</p>
 
        <div class="bk-subhead">Revision block <span>— filled into the cover approval table &amp; page headers</span></div>
        <div class="bk-grid">
@@ -897,6 +914,68 @@
       if (reportToken) window.location.href = '/api/report/' + reportToken;
     });
 
+    // --- Local Agent: Windows companion on the user's PC (AutoCAD / Plant 3D + Word bridge) ---
+    // A hosted site cannot reach COM on the user's machine, so the page talks to a tiny local
+    // server at http://127.0.0.1:5081 when it is running. AutoCAD sync and Booklet prefer the
+    // agent whenever it is connected and fall back to the server otherwise.
+    const Agent = {
+      port: 5081, url: null, connected: false, status: null, serverIsWindows: false, downloadUrl: null,
+      opts(extra) { return Object.assign({ mode: 'cors', targetAddressSpace: 'loopback' }, extra || {}); },
+      async init() {
+        try {
+          const r = await fetch('/api/agent/info');
+          const info = await r.json();
+          if (info.port) this.port = info.port;
+          this.serverIsWindows = !!info.serverIsWindows;
+          this.downloadUrl = info.downloadUrl || null;
+        } catch (_) {}
+        this.url = 'http://127.0.0.1:' + this.port;
+        await this.check();
+        setInterval(() => this.check(), 15000);
+      },
+      async check() {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 4000);
+        try {
+          const r = await fetch(this.url + '/status', this.opts({ signal: ctrl.signal }));
+          const s = await r.json();
+          this.connected = !!s.ok; this.status = s;
+        } catch (_) { this.connected = false; this.status = null; }
+        finally { clearTimeout(timer); this.render(); }
+      },
+      // Where "needs Windows software" work should go: the agent if connected, else the server.
+      target(agentPath, serverPath) { return this.connected ? this.url + agentPath : serverPath; },
+      hint() {
+        if (this.connected || this.serverIsWindows) return '';
+        return ' Start the DrawingQC Local Agent on your PC (see "Local agent" in the sidebar) and try again.';
+      },
+      render() {
+        const dot = document.getElementById('agentDot'), text = document.getElementById('agentText');
+        const sub = document.getElementById('agentSub'), link = document.getElementById('agentLink');
+        if (!dot) return;
+        if (this.connected) {
+          dot.className = 'agent-dot on';
+          text.textContent = 'Connected';
+          const a = this.status.autocad || {};
+          const lines = [
+            a.running ? 'AutoCAD: ' + (a.product || 'running') + (a.document ? ' — ' + a.document : '') : 'AutoCAD: not running',
+            'Word: ' + (this.status.word && this.status.word.installed ? 'installed' : 'not found'),
+          ];
+          sub.innerHTML = lines.map(escapeHtml).join('<br>');
+          link.style.display = 'none';
+        } else {
+          dot.className = 'agent-dot off';
+          text.textContent = 'Not running';
+          sub.textContent = this.serverIsWindows
+            ? 'Optional here: AutoCAD sync and Booklet run on this PC directly.'
+            : 'Run the agent on your PC to use AutoCAD sync and Booklet from this site.';
+          if (this.downloadUrl) { link.href = this.downloadUrl; link.style.display = ''; }
+          else link.style.display = 'none';
+        }
+      }
+    };
+    Agent.init();
+
     // --- Sync the QC register into the open AutoCAD drawing (live COM) ---
     const syncBtn = document.getElementById('sync');
     const syncMsg = document.getElementById('syncMsg');
@@ -914,19 +993,21 @@
       syncMsg.classList.add('hidden');
 
       try {
-        const res = await fetch('/api/sync-autocad', {
+        const viaAgent = Agent.connected;
+        const res = await fetch(Agent.target('/sync-autocad', '/api/sync-autocad'), Agent.opts({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ rows: allRows })
-        });
+        }));
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
-          showSyncMsg(data.detail || data.error || 'Sync failed.', false);
+          showSyncMsg((data.detail || data.error || 'Sync failed.') + (viaAgent ? '' : Agent.hint()), false);
         } else {
-          showSyncMsg('Synced ' + (data.count ?? allRows.length) + ' rows into AutoCAD — check the open drawing.', true);
+          const product = (viaAgent && Agent.status && Agent.status.autocad && Agent.status.autocad.product) || 'AutoCAD';
+          showSyncMsg('Synced ' + (data.count ?? allRows.length) + ' rows into ' + product + ' — check the open drawing.', true);
         }
       } catch (err) {
-        showSyncMsg('Sync failed: ' + err.message, false);
+        showSyncMsg('Sync failed: ' + err.message + Agent.hint(), false);
       } finally {
         syncBtn.disabled = false;
         syncBtn.innerHTML = label;
@@ -1069,15 +1150,34 @@
       const bkDownload = document.getElementById('bk-download');
       const bkDownloadWord = document.getElementById('bk-download-word');
       let bkDownloadBase = 'Booklet';
-      const bkGrab = (format, ext) => {
-        // Download straight to the browser's Downloads folder.
-        const a = document.createElement('a');
-        a.href = '/api/booklet/download?format=' + format;
-        a.download = bkDownloadBase + ext;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
+      let bkViaAgent = false;   // where the last booklet was generated (agent on this PC, or server)
+      const bkGrab = async (format, ext) => {
+        // Download straight to the browser's Downloads folder. Fetched as a blob so the file name
+        // is ours even when it comes from the agent (a different origin).
+        const src = (bkViaAgent ? Agent.url + '/booklet/download' : '/api/booklet/download') + '?format=' + format;
         bkStatus.textContent = 'Downloading to your Downloads folder…';
+        try {
+          const r = await fetch(src, Agent.opts());
+          if (!r.ok) throw new Error('the file is no longer available — generate the booklet again');
+          const blob = await r.blob();
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = bkDownloadBase + ext;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+        } catch (e) {
+          bkError.textContent = 'Download failed: ' + e.message;
+          bkError.classList.remove('hidden');
+          bkStatus.textContent = 'Failed.';
+        }
+      };
+      // Original file names (for the shared run history when the agent did the work).
+      const bkName = n => {
+        const f = document.getElementById('bk-' + n + '-file').files[0];
+        const p = bkVal('bk-' + n + '-path');
+        return f ? f.name : (p ? p.split(/[\\/]/).pop() : null);
       };
       bkDownload.addEventListener('click', () => bkGrab('pdf', '.pdf'));
       bkDownloadWord.addEventListener('click', () => bkGrab('word', '.docx'));
@@ -1115,13 +1215,23 @@
         bkStatus.textContent = 'Filling template, converting to PDF and merging drawings… this can take a minute.';
 
         try {
-          const res = await fetch('/api/booklet', { method: 'POST', body: fd });
+          bkViaAgent = Agent.connected;
+          const res = await fetch(Agent.target('/booklet', '/api/booklet'), Agent.opts({ method: 'POST', body: fd }));
           const data = await res.json().catch(() => ({}));
           if (!res.ok) {
-            bkError.textContent = data.detail || data.error || 'Booklet generation failed.';
+            bkError.textContent = (data.detail || data.error || 'Booklet generation failed.') + (bkViaAgent ? '' : Agent.hint());
             bkError.classList.remove('hidden');
             bkStatus.textContent = 'Failed.';
             return;
+          }
+
+          // The agent did the work on this PC: tell the server so the run shows in the shared history.
+          if (bkViaAgent) {
+            fetch('/api/booklet/record', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ template: bkName('template'), excel: bkName('excel'), drawings: bkName('drawings'), bom: bkName('bom'),
+                                     output: data.fileName, rev: bkVal('bk-rev'), date: bkVal('bk-date'), sizeMB: data.sizeMB || 0 })
+            }).catch(() => {});
           }
 
           bkDownloadBase = bkSuggestedBase();

@@ -63,7 +63,41 @@ public static class ConsList
     private static string ManifestPath(string p, string c) => Path.Combine(CatDir(p, c), "manifest.json");
     private static string SourcesDir(string p, string c) { var d = Path.Combine(CatDir(p, c), "sources"); Directory.CreateDirectory(d); return d; }
     private static string SourcePath(string p, string c, ConsEntry e) => Path.Combine(SourcesDir(p, c), e.Id + e.Ext);
-    private static void TryDelete(string path) { try { if (File.Exists(path)) File.Delete(path); } catch { } }
+    // ---------- blob mirror (hosted mode) ----------
+    // With PostgreSQL configured the container's disk is only a cache: every managed file (source
+    // uploads, consolidated Excel/PDF) is mirrored into the blobs table on write and pulled back on
+    // demand, so a redeploy / restart / spin-down on an ephemeral filesystem loses nothing.
+    private static string BlobKey(string path) => Path.GetRelativePath(Root(), path).Replace('\\', '/');
+
+    /// <summary>True if the file is on disk, or could be restored from the database.</summary>
+    private static bool Have(string path)
+    {
+        if (File.Exists(path)) return true;
+        if (!Db.Enabled) return false;
+        try
+        {
+            var data = Db.GetBlob(BlobKey(path));
+            if (data == null) return false;
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllBytes(path, data);
+            return true;
+        }
+        catch (Exception ex) { Console.Error.WriteLine("[ConsList] blob fetch failed: " + ex.Message); return false; }
+    }
+
+    /// <summary>Mirror a freshly written file into the database.</summary>
+    private static void Saved(string path)
+    {
+        if (!Db.Enabled || !File.Exists(path)) return;
+        try { Db.PutBlob(BlobKey(path), File.ReadAllBytes(path)); }
+        catch (Exception ex) { Console.Error.WriteLine("[ConsList] blob store failed: " + ex.Message); }
+    }
+
+    private static void TryDelete(string path)
+    {
+        try { if (File.Exists(path)) File.Delete(path); } catch { }
+        if (Db.Enabled) { try { Db.DeleteBlob(BlobKey(path)); } catch { } }
+    }
 
     // ---------- projects ----------
 
@@ -122,6 +156,7 @@ public static class ConsList
             list.Remove(match);
             PersistProjects(list);
             if (Db.Enabled) Db.DeletePlatformData(match);            // remove its file/category rows
+            if (Db.Enabled) { try { Db.DeleteBlobsWithPrefix(Safe(match) + "/"); } catch { } }
             try { var dir = Path.Combine(Root(), Safe(match)); if (Directory.Exists(dir)) Directory.Delete(dir, true); }
             catch { }
             return (true, "");
@@ -167,7 +202,7 @@ public static class ConsList
     // Split the existing consolidated Excel back into per-entry source files (data rows only, no banner).
     private static void BackfillExcel(string p, string c, CatManifest m)
     {
-        if (!File.Exists(XlsxPath(p, c))) return;
+        if (!Have(XlsxPath(p, c))) return;
         using var wb = new XLWorkbook(XlsxPath(p, c));
         if (!wb.TryGetWorksheet("Consolidated", out var ws)) ws = wb.Worksheets.First();
         var used = ws.RangeUsed(); if (used == null) return;
@@ -177,12 +212,13 @@ public static class ConsList
         {
             if (e.Date != lastDate) { r++; lastDate = e.Date; }   // skip the once-per-day banner row
             var sp = SourcePath(p, c, e);
-            if (!File.Exists(sp))
+            if (!Have(sp))
             {
                 using var ow = new XLWorkbook(); var os = ow.AddWorksheet("Sheet1");
                 for (int k = 0; k < e.Count; k++)
                     for (int col = 1; col <= maxCol; col++) os.Cell(k + 1, col).Value = ws.Cell(r + k, col).Value;
                 ow.SaveAs(sp);
+                Saved(sp);
             }
             r += e.Count;
         }
@@ -191,18 +227,19 @@ public static class ConsList
     // Split the existing consolidated PDF back into per-entry source files by page count.
     private static void BackfillPdf(string p, string c, CatManifest m)
     {
-        if (!File.Exists(PdfPath(p, c))) return;
+        if (!Have(PdfPath(p, c))) return;
         var bytes = File.ReadAllBytes(PdfPath(p, c));
         int page = 0;
         foreach (var e in m.PdfEntries)
         {
             var sp = SourcePath(p, c, e);
-            if (!File.Exists(sp))
+            if (!Have(sp))
             {
                 using var src = PdfReader.Open(new MemoryStream(bytes), PdfDocumentOpenMode.Import);
                 using var od = new PdfDocument();
                 for (int k = 0; k < e.Count && page + k < src.PageCount; k++) od.AddPage(src.Pages[page + k]);
                 od.Save(sp);
+                Saved(sp);
             }
             page += e.Count;
         }
@@ -211,8 +248,8 @@ public static class ConsList
     private static void EnsureSources(string p, string c, CatManifest m)
     {
         EnsureIds(m);
-        if (m.ExcelEntries.Any(e => !File.Exists(SourcePath(p, c, e)))) BackfillExcel(p, c, m);
-        if (m.PdfEntries.Any(e => !File.Exists(SourcePath(p, c, e)))) BackfillPdf(p, c, m);
+        if (m.ExcelEntries.Any(e => !Have(SourcePath(p, c, e)))) BackfillExcel(p, c, m);
+        if (m.PdfEntries.Any(e => !Have(SourcePath(p, c, e)))) BackfillPdf(p, c, m);
     }
 
     // ---------- build ----------
@@ -220,7 +257,7 @@ public static class ConsList
     // Append one source workbook's rows (verbatim) into an open worksheet, with a date banner when asked.
     private static int AppendSourceRows(IXLWorksheet ws, ref int destRow, string sourcePath, string date, bool banner)
     {
-        if (!File.Exists(sourcePath)) return 0;
+        if (!Have(sourcePath)) return 0;
         using var src = new XLWorkbook(sourcePath);
         var sws = src.Worksheets.Select(s => (s, rows: s.RangeUsed()?.RowCount() ?? 0))
             .OrderByDescending(x => x.rows).Select(x => x.s).FirstOrDefault();
@@ -263,6 +300,7 @@ public static class ConsList
         }
         ws.Columns().AdjustToContents();
         wb.SaveAs(xlsx);
+        Saved(xlsx);
         m.LastExcelDate = m.ExcelEntries[^1].Date;
     }
 
@@ -275,13 +313,14 @@ public static class ConsList
         foreach (var e in m.PdfEntries)
         {
             var sp = SourcePath(p, c, e);
-            if (!File.Exists(sp)) { e.Count = 0; continue; }
+            if (!Have(sp)) { e.Count = 0; continue; }
             using var s = PdfReader.Open(sp, PdfDocumentOpenMode.Import);
             int cnt = 0;
             for (int i = 0; i < s.PageCount; i++) { outDoc.AddPage(s.Pages[i]); cnt++; }
             e.Count = cnt;
         }
         outDoc.Save(pdfPath);
+        Saved(pdfPath);
     }
 
     // ---------- add ----------
@@ -311,6 +350,7 @@ public static class ConsList
                     {
                         var e = new ConsEntry { Id = Guid.NewGuid().ToString("N"), Ext = ext, Date = date, Name = name };
                         File.Copy(temp, SourcePath(platform, category, e), true);
+                        Saved(SourcePath(platform, category, e));
                         int n = AppendExcel(platform, category, SourcePath(platform, category, e), date, bannerPending);
                         bannerPending = false; m.LastExcelDate = date;
                         e.Count = n; m.ExcelEntries.Add(e);
@@ -320,6 +360,7 @@ public static class ConsList
                     {
                         var e = new ConsEntry { Id = Guid.NewGuid().ToString("N"), Ext = ".pdf", Date = date, Name = name };
                         File.Copy(temp, SourcePath(platform, category, e), true);
+                        Saved(SourcePath(platform, category, e));
                         int n = AppendPdf(platform, category, SourcePath(platform, category, e));
                         e.Count = n; m.PdfEntries.Add(e);
                         pages += n; pf++;
@@ -339,12 +380,13 @@ public static class ConsList
     {
         var xlsx = XlsxPath(platform, category);
         XLWorkbook wb; IXLWorksheet ws;
-        if (File.Exists(xlsx)) { wb = new XLWorkbook(xlsx); if (!wb.TryGetWorksheet("Consolidated", out ws!)) ws = wb.Worksheets.First(); }
+        if (Have(xlsx)) { wb = new XLWorkbook(xlsx); if (!wb.TryGetWorksheet("Consolidated", out ws!)) ws = wb.Worksheets.First(); }
         else { wb = new XLWorkbook(); ws = wb.AddWorksheet("Consolidated"); }
         int destRow = (ws.LastRowUsed()?.RowNumber() ?? 0) + 1;
         int n = AppendSourceRows(ws, ref destRow, sourcePath, dateStr, writeBanner);
         ws.Columns().AdjustToContents();
         wb.SaveAs(xlsx);
+        Saved(xlsx);
         wb.Dispose();
         return n;
     }
@@ -353,11 +395,12 @@ public static class ConsList
     private static int AppendPdf(string platform, string category, string sourcePath)
     {
         var pdfPath = PdfPath(platform, category);
-        PdfDocument outDoc = File.Exists(pdfPath) ? PdfReader.Open(pdfPath, PdfDocumentOpenMode.Modify) : new PdfDocument();
+        PdfDocument outDoc = Have(pdfPath) ? PdfReader.Open(pdfPath, PdfDocumentOpenMode.Modify) : new PdfDocument();
         int pages = 0;
         using (var s = PdfReader.Open(sourcePath, PdfDocumentOpenMode.Import))
             for (int i = 0; i < s.PageCount; i++) { outDoc.AddPage(s.Pages[i]); pages++; }
         outDoc.Save(pdfPath);
+        Saved(pdfPath);
         outDoc.Dispose();
         return pages;
     }
@@ -414,12 +457,14 @@ public static class ConsList
                     TryDelete(SourcePath(platform, c, xe));
                     xe.Ext = ext; xe.Name = name;
                     File.Copy(tempPath, SourcePath(platform, c, xe), true);
+                    Saved(SourcePath(platform, c, xe));
                     RebuildExcel(platform, c, m);
                 }
                 else
                 {
                     if (ext != ".pdf") return (false, "Replace a PDF with a .pdf file.");
                     File.Copy(tempPath, SourcePath(platform, c, pe!), true);
+                    Saved(SourcePath(platform, c, pe!));
                     pe!.Name = name;
                     RebuildPdf(platform, c, m);
                 }
@@ -459,8 +504,8 @@ public static class ConsList
                         pdfPages = m.PdfEntries.Sum(e => e.Count),
                         excelFiles = m.ExcelEntries.Count,
                         pdfFiles = m.PdfEntries.Count,
-                        hasExcel = File.Exists(XlsxPath(p, c)),
-                        hasPdf = File.Exists(PdfPath(p, c)),
+                        hasExcel = Have(XlsxPath(p, c)),
+                        hasPdf = Have(PdfPath(p, c)),
                         log,
                     };
                 }
@@ -498,7 +543,7 @@ public static class ConsList
     {
         var iPath = XlsxPath(platform, "Internal");
         var ePath = XlsxPath(platform, "External");
-        bool hasI = File.Exists(iPath), hasE = File.Exists(ePath);
+        bool hasI = Have(iPath), hasE = Have(ePath);
         if (!hasI && !hasE) return (null, "No Excel has been added for Internal or External yet.");
         using var outWb = new XLWorkbook();
         if (hasI) { using var w = new XLWorkbook(iPath); w.Worksheets.First().CopyTo(outWb, "Internal"); }
@@ -512,7 +557,7 @@ public static class ConsList
     {
         var iPath = PdfPath(platform, "Internal");
         var ePath = PdfPath(platform, "External");
-        bool hasI = File.Exists(iPath), hasE = File.Exists(ePath);
+        bool hasI = Have(iPath), hasE = Have(ePath);
         if (!hasI && !hasE) return (null, "No PDF has been added for Internal or External yet.");
         using var outDoc = new PdfDocument();
         foreach (var (has, path) in new[] { (hasI, iPath), (hasE, ePath) })
@@ -545,7 +590,7 @@ public static class ConsList
 
             string category = scope.Equals("External", StringComparison.OrdinalIgnoreCase) ? "External" : "Internal";
             var path = excel ? XlsxPath(platform, category) : PdfPath(platform, category);
-            if (!File.Exists(path))
+            if (!Have(path))
                 return (null, "", excel ? $"No {category} Excel has been added yet." : $"No {category} PDF has been added yet.");
 
             var m = LoadManifest(platform, category);

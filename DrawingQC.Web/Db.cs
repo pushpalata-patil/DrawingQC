@@ -86,6 +86,15 @@ CREATE TABLE IF NOT EXISTS settings (
     value TEXT NOT NULL
 );
 
+-- File contents that must survive an ephemeral filesystem (Render, containers): ConsList source
+-- uploads and the consolidated Excel/PDF per platform+category. key = path relative to the
+-- ConsList root, forward slashes (e.g. RP5S/Internal/sources/<id>.pdf).
+CREATE TABLE IF NOT EXISTS blobs (
+    key        TEXT PRIMARY KEY,
+    data       BYTEA NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS conslist_projects (
     name TEXT PRIMARY KEY,
     ord  INT NOT NULL DEFAULT 0
@@ -254,6 +263,43 @@ CREATE TABLE IF NOT EXISTS mto_runs (
     {
         using var con = Open();
         Exec(con, "INSERT INTO settings(key,value) VALUES(@k,@v) ON CONFLICT (key) DO UPDATE SET value=excluded.value", ("k", key), ("v", value));
+    }
+
+    // ---------- blobs (file bytes that must outlive the container's disk) ----------
+
+    public static byte[]? GetBlob(string key)
+    {
+        using var con = Open();
+        using var cmd = new NpgsqlCommand("SELECT data FROM blobs WHERE key=@k", con);
+        cmd.Parameters.AddWithValue("k", key);
+        return cmd.ExecuteScalar() as byte[];
+    }
+
+    public static bool HasBlob(string key)
+    {
+        using var con = Open();
+        using var cmd = new NpgsqlCommand("SELECT 1 FROM blobs WHERE key=@k", con);
+        cmd.Parameters.AddWithValue("k", key);
+        return cmd.ExecuteScalar() != null;
+    }
+
+    public static void PutBlob(string key, byte[] data)
+    {
+        using var con = Open();
+        Exec(con, @"INSERT INTO blobs(key,data,updated_at) VALUES(@k,@d,now())
+                    ON CONFLICT (key) DO UPDATE SET data=excluded.data, updated_at=now()", ("k", key), ("d", data));
+    }
+
+    public static void DeleteBlob(string key)
+    {
+        using var con = Open();
+        Exec(con, "DELETE FROM blobs WHERE key=@k", ("k", key));
+    }
+
+    public static void DeleteBlobsWithPrefix(string prefix)
+    {
+        using var con = Open();
+        Exec(con, "DELETE FROM blobs WHERE key LIKE @p", ("p", prefix.Replace("%", "\\%").Replace("_", "\\_") + "%"));
     }
 
     // One-time migration of the existing on-disk JSON into the database (only when the DB is empty).
