@@ -18,6 +18,7 @@
   <ItemGroup>
     <Compile Remove="DrawingQC.UI\**\*.cs" />
     <Compile Remove="DrawingQC.Web\**\*.cs" />
+    <Compile Remove="DrawingQC.Agent\**\*.cs" />
     <Compile Remove="src\**\*.cs" />
   </ItemGroup>
 
