@@ -451,6 +451,15 @@ app.MapPost("/api/conslist/project/delete", (HttpRequest request, ConsProjectDto
     return ok ? Results.Ok(new { ok = true }) : Results.BadRequest(new { error = err });
 });
 
+// Re-generate a project's consolidated Excel/PDF from its saved sources (apply the latest format).
+app.MapPost("/api/conslist/regenerate", (HttpRequest request, ConsProjectDto dto) =>
+{
+    if (CurrentUser(request) == null)
+        return Results.Json(new { error = "Please sign in first." }, statusCode: 401);
+    var (ok, err, files) = DrawingQC.Web.ConsList.Regenerate(dto.name ?? "");
+    return ok ? Results.Ok(new { ok = true, files }) : Results.BadRequest(new { error = err });
+});
+
 // Add a batch of daily files (Excel -> typical supports, PDF -> unique supports) to a platform/category.
 app.MapPost("/api/conslist/add", async (HttpRequest request) =>
 {

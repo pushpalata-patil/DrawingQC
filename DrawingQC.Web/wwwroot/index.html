@@ -443,6 +443,11 @@
        #view-conslist .cl-btn.ghost { background:#fff; color:var(--ink); border:1px solid var(--border); }
        #view-conslist .cl-btn.cl-del { color:#b91c1c; border-color:#f3c2c2; }
        #view-conslist .cl-btn.cl-del:hover { background:#fef2f2; }
+       /* Regenerate: a distinct, non-destructive action, separated from Delete */
+       #view-conslist .cl-regen-field { margin-left:auto; }
+       #view-conslist .cl-btn.cl-regen-btn { background:#eef2ff; color:#4f46e5; border:1px solid #c7d0fb; font-weight:600; }
+       #view-conslist .cl-btn.cl-regen-btn:hover { background:#e0e7ff; }
+       #view-conslist .cl-btn.cl-regen-btn:disabled { opacity:.6; }
        #view-conslist .cl-btn:disabled { opacity:.55; cursor:default; }
        #view-conslist .cl-drops { display:flex; gap:16px; flex-wrap:wrap; }
        #view-conslist .cl-drop { flex:1; min-width:280px; border:2px dashed var(--border); border-radius:14px; padding:22px; text-align:center; background:#fbfbfd; transition:.15s; cursor:pointer; }
@@ -534,6 +539,10 @@
            <button type="button" class="cl-btn ghost" id="cl-addproj">Add project</button>
          </div>
          <div id="cl-proj-err" class="cl-inline-err" style="display:none;"></div>
+       </div>
+       <div class="cl-field cl-regen-field">
+         <label>Rebuild output</label>
+         <button type="button" class="cl-btn cl-regen-btn" id="cl-regen" title="Rebuild the selected project's consolidated Excel/PDF from its saved files (applies the latest format — no re-upload, nothing duplicated)">&#8635;&nbsp; Regenerate output</button>
        </div>
      </div>
 
@@ -1642,6 +1651,22 @@
           await loadConsList();
           msg('Project "' + name + '" deleted.', 'ok');
         } catch (e) { msg('Could not delete project: ' + e.message, 'err'); }
+      });
+
+      $('cl-regen').addEventListener('click', async () => {
+        const name = $('cl-project').value;
+        if (!name) { msg('Select a project to regenerate.', 'err'); return; }
+        const btn = $('cl-regen'); const prev = btn.textContent;
+        btn.disabled = true; btn.textContent = 'Regenerating…';
+        msg('Regenerating "' + name + '" from its saved files…', 'ok');
+        try {
+          const res = await fetch('/api/conslist/regenerate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) { msg(data.error || 'Could not regenerate.', 'err'); return; }
+          await loadConsList();
+          msg('Regenerated "' + name + '" — ' + (data.files || 0) + ' file(s) rebuilt in the latest format.', 'ok');
+        } catch (e) { msg('Could not regenerate: ' + e.message, 'err'); }
+        finally { btn.disabled = false; btn.textContent = prev; }
       });
     }
 

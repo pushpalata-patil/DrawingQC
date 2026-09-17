@@ -482,6 +482,35 @@ public static class ConsList
         }
     }
 
+    /// <summary>
+    /// Re-generate a platform's consolidated Excel + PDF (Internal and External) from its already-
+    /// saved source files — applies the latest output format without any re-upload. Returns how many
+    /// source files were rebuilt.
+    /// </summary>
+    public static (bool ok, string err, int files) Regenerate(string platform)
+    {
+        platform = (platform ?? "").Trim();
+        if (platform.Length == 0) return (false, "No project selected.", 0);
+        lock (Gate)
+        {
+            if (!Projects().Any(p => p.Equals(platform, StringComparison.OrdinalIgnoreCase)))
+                return (false, "That project does not exist.", 0);
+
+            int files = 0;
+            foreach (var c in Categories)
+            {
+                var m = LoadManifest(platform, c);
+                EnsureIds(m);
+                EnsureSources(platform, c, m);   // restore per-file sources for any legacy data
+                RebuildExcel(platform, c, m);
+                RebuildPdf(platform, c, m);
+                SaveManifest(platform, c, m);
+                files += m.ExcelEntries.Count + m.PdfEntries.Count;
+            }
+            return files == 0 ? (false, "This project has no files to regenerate.", 0) : (true, "", files);
+        }
+    }
+
     /// <summary>Replace one file (by id) with a newly uploaded file of the same kind, then rebuild.</summary>
     public static (bool ok, string err) ReplaceFile(string platform, string id, string name, string tempPath)
     {
