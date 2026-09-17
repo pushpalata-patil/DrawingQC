@@ -479,12 +479,15 @@
        #view-conslist .cl-bulk #cl-bulk-count { font-weight:600; color:var(--ink); font-size:13.5px; }
        #view-conslist .cl-bulk .cl-btn { padding:7px 14px; font-size:13px; }
        @media (max-width:1100px){ #view-conslist .cl-sections { grid-template-columns:1fr; } }
-       #view-conslist .cl-results { background:#fff; border:1px solid var(--border); border-radius:14px; padding:16px; overflow-x:hidden; }
-       #view-conslist table { width:100%; border-collapse:collapse; font-size:13.5px; }
-       #view-conslist td { padding:8px 12px 8px 10px; border-bottom:1px solid var(--border); color:var(--ink); white-space:nowrap; }
-       /* File name column takes the remaining width and truncates so the action buttons always show */
-       #view-conslist td.cl-fname { max-width:1px; width:100%; overflow:hidden; text-overflow:ellipsis; }
-       #view-conslist td.cl-act { text-align:right; padding-right:6px; }
+       #view-conslist .cl-results { background:#fff; border:1px solid var(--border); border-radius:14px; padding:14px; overflow-x:hidden; }
+       #view-conslist table { width:100%; border-collapse:collapse; font-size:13px; }
+       #view-conslist td { padding:6px 8px; border-bottom:1px solid var(--border); color:var(--ink); white-space:nowrap; }
+       /* File name column truncates to a fixed width so the count + action buttons stay close */
+       #view-conslist td.cl-fname { max-width:230px; overflow:hidden; text-overflow:ellipsis; }
+       #view-conslist td.cl-count { text-align:right; padding-right:14px; color:var(--muted); }
+       #view-conslist td.cl-act { width:1%; padding:6px 3px; }
+       #view-conslist td.cl-spacer { width:100%; padding:0; }
+       #view-conslist .cl-report .cl-row-btn { padding:3px 9px; font-size:12px; }
        #view-conslist td.ty { font-weight:700; }
        #view-conslist td.ty.Excel { color:#166534; }
        #view-conslist td.ty.PDF { color:#b45309; }
@@ -495,7 +498,8 @@
        #view-conslist .cl-msg.ok { background:#ecfdf5; color:#166534; }
        #view-conslist .cl-msg.err { background:#fef2f2; color:#b91c1c; }
        /* Separate, colour-differentiated MTO vs Unique report views */
-       #view-conslist #cl-results-wrap { display:flex; flex-direction:column; gap:18px; margin-top:16px; }
+       #view-conslist #cl-results-wrap { display:grid; grid-template-columns:1fr 1fr; gap:18px; margin-top:16px; align-items:start; }
+       @media (max-width:1250px){ #view-conslist #cl-results-wrap { grid-template-columns:1fr; } }
        #view-conslist .cl-report { border:1px solid var(--border); border-radius:14px; overflow:hidden; background:#fff; }
        #view-conslist .cl-report-mto { border-top:4px solid #16a34a; }
        #view-conslist .cl-report-uniq { border-top:4px solid #d97706; }
@@ -604,7 +608,7 @@
          </div>
          <div class="cl-results">
            <table>
-             <tbody id="cl-log-mto"><tr><td colspan="6" class="cl-empty">No MTO Excel files added yet.</td></tr></tbody>
+             <tbody id="cl-log-mto"><tr><td colspan="7" class="cl-empty">No MTO Excel files added yet.</td></tr></tbody>
            </table>
          </div>
        </section>
@@ -618,7 +622,7 @@
          </div>
          <div class="cl-results">
            <table>
-             <tbody id="cl-log-uniq"><tr><td colspan="6" class="cl-empty">No Unique PDF files added yet.</td></tr></tbody>
+             <tbody id="cl-log-uniq"><tr><td colspan="7" class="cl-empty">No Unique PDF files added yet.</td></tr></tbody>
            </table>
          </div>
        </section>
@@ -1417,20 +1421,21 @@
 
     // Build the rows for one report table (MTO or Unique), grouped by date, into `rowOrder`.
     function reportRows(entries, emptyMsg, unit) {
-      if (!entries.length) return '<tr><td colspan="6" class="cl-empty">' + emptyMsg + '</td></tr>';
+      if (!entries.length) return '<tr><td colspan="7" class="cl-empty">' + emptyMsg + '</td></tr>';
       let html = '', last = null;
       entries.forEach(en => {
         if (en.date !== last) {
-          html += '<tr class="cl-datehdr"><td colspan="6">' + esc(en.date) + '</td></tr>' +
-            '<tr class="cl-colhdr"><td></td><td>Scope</td><td>File</td><td>' + unit + '</td><td></td><td></td></tr>';
+          html += '<tr class="cl-datehdr"><td colspan="7">' + esc(en.date) + '</td></tr>' +
+            '<tr class="cl-colhdr"><td></td><td>Scope</td><td>File</td><td class="cl-count">' + unit + '</td><td></td><td></td><td></td></tr>';
           last = en.date;
         }
         const idx = rowOrder.length; rowOrder.push(en.id);
         html += '<tr data-id="' + esc(en.id) + '">' +
           '<td class="cl-chk-td"><input type="checkbox" class="cl-chk" data-id="' + esc(en.id) + '" data-idx="' + idx + '"></td>' +
-          '<td class="sc">' + esc(en.scope) + '</td><td class="cl-fname" title="' + esc(en.name) + '">' + esc(en.name) + '</td><td>' + en.count + '</td>' +
+          '<td class="sc">' + esc(en.scope) + '</td><td class="cl-fname" title="' + esc(en.name) + '">' + esc(en.name) + '</td><td class="cl-count">' + en.count + '</td>' +
           '<td class="cl-act"><button type="button" class="cl-row-btn cl-rep" data-id="' + esc(en.id) + '" title="Replace this file">Replace</button></td>' +
           '<td class="cl-act"><button type="button" class="cl-row-btn cl-del2" data-id="' + esc(en.id) + '" title="Delete this file">Delete</button></td>' +
+          '<td class="cl-spacer"></td>' +
           '</tr>';
       });
       return html;
@@ -1448,8 +1453,8 @@
 
       rowOrder = [];
       if (!p) {
-        mtoBody.innerHTML = '<tr><td colspan="6" class="cl-empty">Select a project to see its files.</td></tr>';
-        uniqBody.innerHTML = '<tr><td colspan="6" class="cl-empty">Select a project to see its files.</td></tr>';
+        mtoBody.innerHTML = '<tr><td colspan="7" class="cl-empty">Select a project to see its files.</td></tr>';
+        uniqBody.innerHTML = '<tr><td colspan="7" class="cl-empty">Select a project to see its files.</td></tr>';
         $('cl-sum-mto').textContent = ''; $('cl-sum-uniq').textContent = '';
         updateBulk(); return;
       }
