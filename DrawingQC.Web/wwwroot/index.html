@@ -491,6 +491,21 @@
        #view-conslist .cl-msg { margin-top:12px; padding:10px 12px; border-radius:8px; font-size:14px; }
        #view-conslist .cl-msg.ok { background:#ecfdf5; color:#166534; }
        #view-conslist .cl-msg.err { background:#fef2f2; color:#b91c1c; }
+       /* Separate, colour-differentiated MTO vs Unique report views */
+       #view-conslist #cl-results-wrap { display:grid; grid-template-columns:1fr 1fr; gap:18px; margin-top:16px; }
+       @media (max-width:1200px){ #view-conslist #cl-results-wrap { grid-template-columns:1fr; } }
+       #view-conslist .cl-report { border:1px solid var(--border); border-radius:14px; overflow:hidden; background:#fff; }
+       #view-conslist .cl-report-mto { border-top:4px solid #16a34a; }
+       #view-conslist .cl-report-uniq { border-top:4px solid #d97706; }
+       #view-conslist .cl-report-head { display:flex; align-items:center; gap:10px; padding:12px 16px; border-bottom:1px solid var(--border); }
+       #view-conslist .cl-report-mto .cl-report-head { background:#f0fdf4; }
+       #view-conslist .cl-report-uniq .cl-report-head { background:#fff7ed; }
+       #view-conslist .cl-report-badge { font-size:11px; font-weight:800; letter-spacing:.05em; text-transform:uppercase; padding:3px 9px; border-radius:999px; color:#fff; }
+       #view-conslist .cl-report-badge.mto { background:#16a34a; }
+       #view-conslist .cl-report-badge.uniq { background:#d97706; }
+       #view-conslist .cl-report-title { font-weight:700; font-size:13.5px; color:var(--ink); }
+       #view-conslist .cl-report-sum { margin-left:auto; font-size:12.5px; font-weight:600; color:var(--muted); }
+       #view-conslist .cl-report .cl-results { border:none; border-radius:0; }
      </style>
 
      <div class="mhead">
@@ -577,10 +592,34 @@
      </div>
      <input type="file" id="cl-replace-input" hidden>
 
-     <div class="cl-results">
-       <table>
-         <tbody id="cl-log"><tr><td colspan="7" class="cl-empty">No files added yet for this platform.</td></tr></tbody>
-       </table>
+     <div id="cl-results-wrap">
+       <!-- MTO (Excel) report view -->
+       <section class="cl-report cl-report-mto">
+         <div class="cl-report-head">
+           <span class="cl-report-badge mto">MTO</span>
+           <span class="cl-report-title">Excel — typical supports</span>
+           <span class="cl-report-sum" id="cl-sum-mto"></span>
+         </div>
+         <div class="cl-results">
+           <table>
+             <tbody id="cl-log-mto"><tr><td colspan="6" class="cl-empty">No MTO Excel files added yet.</td></tr></tbody>
+           </table>
+         </div>
+       </section>
+
+       <!-- Unique (PDF) report view -->
+       <section class="cl-report cl-report-uniq">
+         <div class="cl-report-head">
+           <span class="cl-report-badge uniq">Unique</span>
+           <span class="cl-report-title">PDF — unique supports</span>
+           <span class="cl-report-sum" id="cl-sum-uniq"></span>
+         </div>
+         <div class="cl-results">
+           <table>
+             <tbody id="cl-log-uniq"><tr><td colspan="6" class="cl-empty">No Unique PDF files added yet.</td></tr></tbody>
+           </table>
+         </div>
+       </section>
      </div>
    </div><!-- /view-conslist -->
 
@@ -1374,9 +1413,31 @@
       el.classList.toggle('has', !!has);
     }
 
+    // Build the rows for one report table (MTO or Unique), grouped by date, into `rowOrder`.
+    function reportRows(entries, emptyMsg, unit) {
+      if (!entries.length) return '<tr><td colspan="6" class="cl-empty">' + emptyMsg + '</td></tr>';
+      let html = '', last = null;
+      entries.forEach(en => {
+        if (en.date !== last) {
+          html += '<tr class="cl-datehdr"><td colspan="6">' + esc(en.date) + '</td></tr>' +
+            '<tr class="cl-colhdr"><td></td><td>Scope</td><td>File</td><td>' + unit + '</td><td></td><td></td></tr>';
+          last = en.date;
+        }
+        const idx = rowOrder.length; rowOrder.push(en.id);
+        html += '<tr data-id="' + esc(en.id) + '">' +
+          '<td class="cl-chk-td"><input type="checkbox" class="cl-chk" data-id="' + esc(en.id) + '" data-idx="' + idx + '"></td>' +
+          '<td class="sc">' + esc(en.scope) + '</td><td>' + esc(en.name) + '</td><td>' + en.count + '</td>' +
+          '<td><button type="button" class="cl-row-btn cl-rep" data-id="' + esc(en.id) + '" title="Replace this file">Replace</button></td>' +
+          '<td><button type="button" class="cl-row-btn cl-del2" data-id="' + esc(en.id) + '" title="Delete this file">Delete</button></td>' +
+          '</tr>';
+      });
+      return html;
+    }
+
     function render() {
       const { p, i, e } = pdata();
-      const log = $('cl-log'); if (!log) return;
+      const mtoBody = $('cl-log-mto'), uniqBody = $('cl-log-uniq');
+      if (!mtoBody || !uniqBody) return;
 
       setSt('cl-st-mto-int', i && i.excelFiles > 0, i ? (i.excelFiles + ' file(s) · ' + i.excelRows + ' rows') : '', 'Drop .xlsx / .xls, or click.');
       setSt('cl-st-mto-ext', e && e.excelFiles > 0, e ? (e.excelFiles + ' file(s) · ' + e.excelRows + ' rows') : '', 'Drop .xlsx / .xls, or click.');
@@ -1384,37 +1445,33 @@
       setSt('cl-st-uniq-ext', e && e.pdfFiles > 0, e ? (e.pdfFiles + ' file(s) · ' + e.pdfPages + ' pages') : '', 'Drop .pdf, or click.');
 
       rowOrder = [];
-      if (!p) { log.innerHTML = '<tr><td colspan="7" class="cl-empty">Select a project to see its files.</td></tr>'; updateBulk(); return; }
-      const entries = []
+      if (!p) {
+        mtoBody.innerHTML = '<tr><td colspan="6" class="cl-empty">Select a project to see its files.</td></tr>';
+        uniqBody.innerHTML = '<tr><td colspan="6" class="cl-empty">Select a project to see its files.</td></tr>';
+        $('cl-sum-mto').textContent = ''; $('cl-sum-uniq').textContent = '';
+        updateBulk(); return;
+      }
+      const all = []
         .concat(((i && i.log) || []).map(x => Object.assign({ scope: 'Internal' }, x)))
         .concat(((e && e.log) || []).map(x => Object.assign({ scope: 'External' }, x)));
-      entries.sort((a, b) => dkey(a.date) - dkey(b.date));
-      if (!entries.length) { log.innerHTML = '<tr><td colspan="7" class="cl-empty">No files added yet for this platform.</td></tr>'; updateBulk(); return; }
+      const mto = all.filter(x => x.type === 'Excel').sort((a, b) => dkey(a.date) - dkey(b.date));
+      const uniq = all.filter(x => x.type === 'PDF').sort((a, b) => dkey(a.date) - dkey(b.date));
 
-      // Group by date — the date sits once above the column labels for that day's files.
-      let html = '', last = null;
-      entries.forEach(en => {
-        if (en.date !== last) {
-          html += '<tr class="cl-datehdr"><td colspan="7">' + esc(en.date) + '</td></tr>' +
-            '<tr class="cl-colhdr"><td></td><td>Type</td><td>Scope</td><td>File</td><td>Rows / Pages</td><td></td><td></td></tr>';
-          last = en.date;
-        }
-        const idx = rowOrder.length; rowOrder.push(en.id);
-        html += '<tr data-id="' + esc(en.id) + '">' +
-          '<td class="cl-chk-td"><input type="checkbox" class="cl-chk" data-id="' + esc(en.id) + '" data-idx="' + idx + '"></td>' +
-          '<td class="ty ' + esc(en.type) + '">' + esc(en.type) + '</td><td class="sc">' + esc(en.scope) +
-          '</td><td>' + esc(en.name) + '</td><td>' + en.count + '</td>' +
-          '<td><button type="button" class="cl-row-btn cl-rep" data-id="' + esc(en.id) + '" title="Replace this file">Replace</button></td>' +
-          '<td><button type="button" class="cl-row-btn cl-del2" data-id="' + esc(en.id) + '" title="Delete this file">Delete</button></td>' +
-          '</tr>';
-      });
-      log.innerHTML = html;
+      // MTO first, then Unique — keeps `rowOrder` (used for shift-select) in visual order.
+      mtoBody.innerHTML = reportRows(mto, 'No MTO Excel files added yet.', 'Rows');
+      uniqBody.innerHTML = reportRows(uniq, 'No Unique PDF files added yet.', 'Pages');
+
+      const mtoFiles = (i ? i.excelFiles : 0) + (e ? e.excelFiles : 0), mtoRows = (i ? i.excelRows : 0) + (e ? e.excelRows : 0);
+      const pdfFiles = (i ? i.pdfFiles : 0) + (e ? e.pdfFiles : 0), pdfPages = (i ? i.pdfPages : 0) + (e ? e.pdfPages : 0);
+      $('cl-sum-mto').textContent = mtoFiles ? (mtoFiles + ' file(s) · ' + mtoRows + ' rows') : '';
+      $('cl-sum-uniq').textContent = pdfFiles ? (pdfFiles + ' file(s) · ' + pdfPages + ' pages') : '';
+
       updateBulk();
     }
 
     function updateBulk() {
-      const log = $('cl-log'); if (!log) return;
-      const n = log.querySelectorAll('.cl-chk:checked').length;
+      const wrap = $('cl-results-wrap'); if (!wrap) return;
+      const n = wrap.querySelectorAll('.cl-chk:checked').length;
       const bar = $('cl-bulk');
       if (n > 0) { bar.style.display = 'flex'; $('cl-bulk-count').textContent = n + ' selected'; }
       else bar.style.display = 'none';
@@ -1505,15 +1562,15 @@
       $('cl-dl-uniq-ext').addEventListener('click', () => download('pdf', 'External'));
       $('cl-dl-uniq-comb').addEventListener('click', () => download('pdf', 'Combined'));
 
-      // Log table: checkbox (with shift-range) select, per-row Replace / Delete.
-      const logEl = $('cl-log');
-      logEl.addEventListener('click', e => {
+      // Both report tables share the same checkbox (with shift-range) select, per-row Replace / Delete.
+      const wrapEl = $('cl-results-wrap');
+      wrapEl.addEventListener('click', e => {
         const chk = e.target.closest('.cl-chk');
         if (chk) {
           const idx = +chk.dataset.idx;
           if (e.shiftKey && lastIdx !== null) {
             const a = Math.min(lastIdx, idx), b = Math.max(lastIdx, idx);
-            logEl.querySelectorAll('.cl-chk').forEach(box => { const bi = +box.dataset.idx; if (bi >= a && bi <= b) box.checked = chk.checked; });
+            wrapEl.querySelectorAll('.cl-chk').forEach(box => { const bi = +box.dataset.idx; if (bi >= a && bi <= b) box.checked = chk.checked; });
           }
           lastIdx = idx;
           updateBulk();
@@ -1526,11 +1583,11 @@
       });
 
       $('cl-bulk-del').addEventListener('click', () => {
-        const ids = [...logEl.querySelectorAll('.cl-chk:checked')].map(c => c.dataset.id);
+        const ids = [...wrapEl.querySelectorAll('.cl-chk:checked')].map(c => c.dataset.id);
         if (!ids.length) { msg('Select files to delete first.', 'err'); return; }
         deleteFiles(ids);
       });
-      $('cl-bulk-clear').addEventListener('click', () => { logEl.querySelectorAll('.cl-chk:checked').forEach(c => c.checked = false); lastIdx = null; updateBulk(); });
+      $('cl-bulk-clear').addEventListener('click', () => { wrapEl.querySelectorAll('.cl-chk:checked').forEach(c => c.checked = false); lastIdx = null; updateBulk(); });
 
       $('cl-replace-input').addEventListener('change', async () => {
         const inp = $('cl-replace-input'); const file = inp.files && inp.files[0];

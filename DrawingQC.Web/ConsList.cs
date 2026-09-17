@@ -254,54 +254,113 @@ public static class ConsList
 
     // ---------- build ----------
 
-    // Append one source workbook's rows (verbatim) into an open worksheet, with a date banner when asked.
-    private static int AppendSourceRows(IXLWorksheet ws, ref int destRow, string sourcePath, string date, bool banner)
+    // First row that holds data: the first row whose leading (SL NO) column is a positive integer.
+    // Everything above it is the template's header block (logo, title, subtitle, coloured headers).
+    private static int DataStartRow(IXLWorksheet ws)
     {
-        if (!Have(sourcePath)) return 0;
-        using var src = new XLWorkbook(sourcePath);
-        var sws = src.Worksheets.Select(s => (s, rows: s.RangeUsed()?.RowCount() ?? 0))
-            .OrderByDescending(x => x.rows).Select(x => x.s).FirstOrDefault();
-        var used = sws?.RangeUsed();
-        if (sws == null || used == null) return 0;
-        int fr = used.FirstRow().RowNumber(), lr = used.LastRow().RowNumber();
-        int fc = used.FirstColumn().ColumnNumber(), lc = used.LastColumn().ColumnNumber();
-
-        if (banner)
-        {
-            var b = ws.Cell(destRow, 1);
-            b.Value = date; b.Style.Font.Bold = true; b.Style.Fill.BackgroundColor = XLColor.FromArgb(0xDB, 0xE4, 0xF0);
-            destRow++;
-        }
-        int added = 0;
+        var u = ws.RangeUsed();
+        if (u == null) return 1;
+        int fr = u.FirstRow().RowNumber(), lr = u.LastRow().RowNumber(), fc = u.FirstColumn().ColumnNumber();
         for (int r = fr; r <= lr; r++)
         {
-            bool empty = true;
-            for (int col = fc; col <= lc; col++) if (!sws.Cell(r, col).IsEmpty()) { empty = false; break; }
-            if (empty) continue;
-            int dc = 1;
-            for (int col = fc; col <= lc; col++) ws.Cell(destRow, dc++).Value = sws.Cell(r, col).Value;
-            destRow++; added++;
+            var s = ws.Cell(r, fc).GetString().Trim();
+            if (int.TryParse(s, out var n) && n >= 1) return r;
         }
-        return added;
+        return fr; // no serial column found — treat everything as data
     }
 
-    // Rebuild the consolidated Excel from all Excel sources (recomputing each entry's row count).
+
+    // Rebuild the consolidated Excel by reproducing every uploaded file VERBATIM, stacked one below
+    // the next. Each block keeps that file's own layout exactly as uploaded — logo, title, coloured
+    // headers, its own columns and data — and is introduced by a row showing the date it was added.
+    // Files with different column counts are each kept at their own width; nothing is merged or
+    // aligned.
     private static void RebuildExcel(string p, string c, CatManifest m)
     {
         var xlsx = XlsxPath(p, c);
         if (m.ExcelEntries.Count == 0) { TryDelete(xlsx); m.LastExcelDate = ""; return; }
-        using var wb = new XLWorkbook(); var ws = wb.AddWorksheet("Consolidated");
-        int destRow = 1; string? lastDate = null;
+
+        using var outWb = new XLWorkbook();
+        var outWs = outWb.AddWorksheet(c);   // sheet named "Internal" / "External"
+        int outRow = 1;
+        int picN = 0;
+        bool any = false;
+
         foreach (var e in m.ExcelEntries)
         {
-            bool banner = e.Date != lastDate;
-            e.Count = AppendSourceRows(ws, ref destRow, SourcePath(p, c, e), e.Date, banner);
-            lastDate = e.Date;
+            var sp = SourcePath(p, c, e);
+            if (!Have(sp)) { e.Count = 0; continue; }
+            using var wb = new XLWorkbook(sp);
+            var ws = wb.Worksheets.OrderByDescending(s => s.RangeUsed()?.RowCount() ?? 0).FirstOrDefault();
+            var u = ws?.RangeUsed();
+            if (ws == null || u == null) { e.Count = 0; continue; }
+            int lastR = u.LastRow().RowNumber(), lastC = u.LastColumn().ColumnNumber();
+            any = true;
+
+            int blockTop = outRow;
+            // Copy every row (from 1, so the logo/title band comes too) verbatim: values + style + height.
+            for (int r = 1; r <= lastR; r++)
+            {
+                try { outWs.Row(outRow).Height = ws.Row(r).Height; } catch { }
+                for (int col = 1; col <= lastC; col++)
+                {
+                    var s = ws.Cell(r, col); var d = outWs.Cell(outRow, col);
+                    d.Value = s.Value; d.Style = s.Style;
+                }
+                outRow++;
+            }
+
+            // Re-create the merged ranges, offset to this block's position.
+            foreach (var mr in ws.MergedRanges)
+            {
+                var a = mr.RangeAddress;
+                int fr = a.FirstAddress.RowNumber, fcc = a.FirstAddress.ColumnNumber;
+                int lr = a.LastAddress.RowNumber, lcc = a.LastAddress.ColumnNumber;
+                try { outWs.Range(blockTop + fr - 1, fcc, blockTop + lr - 1, lcc).Merge(); } catch { }
+            }
+
+            // Column widths: keep the widest seen for each column across all files.
+            for (int col = 1; col <= lastC; col++)
+            {
+                double w = ws.Column(col).Width;
+                if (w > outWs.Column(col).Width) outWs.Column(col).Width = w;
+            }
+
+            // Re-place each picture (logo) at this block's top, sized to fit the header (native
+            // dimensions are the full-resolution image, so set an explicit display size).
+            foreach (var pic in ws.Pictures)
+            {
+                try
+                {
+                    var img = pic.ImageStream; img.Position = 0;
+                    double aspect = pic.Height > 0 ? (double)pic.Width / pic.Height : 3.25;
+                    int h = 80, wpx = (int)(h * aspect);
+                    int ar = pic.TopLeftCell?.Address.RowNumber ?? 1;
+                    int ac = pic.TopLeftCell?.Address.ColumnNumber ?? 1;
+                    outWs.AddPicture(img, pic.Format, $"logo{picN++}")
+                         .MoveTo(outWs.Cell(blockTop + ar - 1, ac)).WithSize(wpx, h);
+                }
+                catch { }
+            }
+
+            e.Count = CountSupports(ws, u);
+            outRow++; // blank gap before the next file's block
         }
-        ws.Columns().AdjustToContents();
-        wb.SaveAs(xlsx);
+
+        if (!any) { TryDelete(xlsx); m.LastExcelDate = ""; return; }
+        outWb.SaveAs(xlsx);
         Saved(xlsx);
         m.LastExcelDate = m.ExcelEntries[^1].Date;
+    }
+
+    // Number of support rows in a sheet (rows with a value in the leading SL NO column, from the
+    // first data row down) — used only for the on-screen count, not for the output.
+    private static int CountSupports(IXLWorksheet ws, IXLRange used)
+    {
+        int fc = used.FirstColumn().ColumnNumber(), lr = used.LastRow().RowNumber();
+        int ds = DataStartRow(ws), n = 0;
+        for (int r = ds; r <= lr; r++) if (!ws.Cell(r, fc).IsEmpty()) n++;
+        return n;
     }
 
     // Rebuild the consolidated PDF from all PDF sources (recomputing each entry's page count).
@@ -339,7 +398,7 @@ public static class ConsList
             string date = DateTime.Now.ToString("dd-MM-yyyy");
             int rows = 0, pages = 0, ef = 0, pf = 0;
             var errors = new List<string>();
-            bool bannerPending = !string.Equals(m.LastExcelDate, date, StringComparison.Ordinal);
+            var newExcel = new List<ConsEntry>();
 
             foreach (var (name, temp) in files)
             {
@@ -348,13 +407,12 @@ public static class ConsList
                 {
                     if (ext is ".xlsx" or ".xls")
                     {
+                        // Files are aligned by column header in RebuildExcel, so differing column
+                        // sets (14 vs 18) merge cleanly — nothing is skipped for format.
                         var e = new ConsEntry { Id = Guid.NewGuid().ToString("N"), Ext = ext, Date = date, Name = name };
                         File.Copy(temp, SourcePath(platform, category, e), true);
                         Saved(SourcePath(platform, category, e));
-                        int n = AppendExcel(platform, category, SourcePath(platform, category, e), date, bannerPending);
-                        bannerPending = false; m.LastExcelDate = date;
-                        e.Count = n; m.ExcelEntries.Add(e);
-                        rows += n; ef++;
+                        m.ExcelEntries.Add(e); newExcel.Add(e); ef++;
                     }
                     else if (ext == ".pdf")
                     {
@@ -370,25 +428,14 @@ public static class ConsList
                 catch (Exception ex) { errors.Add($"{name}: {(string.IsNullOrWhiteSpace(ex.Message) ? ex.GetType().Name : ex.Message)}"); }
             }
 
+            // Rebuild the styled consolidated Excel from all sources so the template (logo, coloured
+            // headers, support count) is preserved and each entry's row count is recomputed.
+            if (newExcel.Count > 0) RebuildExcel(platform, category, m);
+            rows = newExcel.Sum(e => e.Count);
+
             SaveManifest(platform, category, m);
             return (rows, pages, ef, pf, errors);
         }
-    }
-
-    // Incrementally append one Excel source onto the existing consolidated workbook (used by Add).
-    private static int AppendExcel(string platform, string category, string sourcePath, string dateStr, bool writeBanner)
-    {
-        var xlsx = XlsxPath(platform, category);
-        XLWorkbook wb; IXLWorksheet ws;
-        if (Have(xlsx)) { wb = new XLWorkbook(xlsx); if (!wb.TryGetWorksheet("Consolidated", out ws!)) ws = wb.Worksheets.First(); }
-        else { wb = new XLWorkbook(); ws = wb.AddWorksheet("Consolidated"); }
-        int destRow = (ws.LastRowUsed()?.RowNumber() ?? 0) + 1;
-        int n = AppendSourceRows(ws, ref destRow, sourcePath, dateStr, writeBanner);
-        ws.Columns().AdjustToContents();
-        wb.SaveAs(xlsx);
-        Saved(xlsx);
-        wb.Dispose();
-        return n;
     }
 
     // Incrementally append one PDF source onto the existing consolidated PDF (used by Add).
