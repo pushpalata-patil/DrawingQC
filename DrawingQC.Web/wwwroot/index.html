@@ -1799,6 +1799,32 @@
         return res;
       };
 
+      // Auth requests tolerate the free-tier cold start: a long timeout, and a "waking up" hint if
+      // the first request after idle is slow — so a spun-down server never looks like a broken login.
+      function setErr(el, text, kind) {
+        if (!el) return;
+        el.textContent = text;
+        el.style.display = text ? 'block' : 'none';
+        el.style.background = kind === 'ok' ? '#f0fdf4' : kind === 'warn' ? '#fff7ed' : '';
+        el.style.color = kind === 'ok' ? '#166534' : kind === 'warn' ? '#b45309' : '';
+      }
+      async function authFetch(url, opts, errEl) {
+        const ctrl = new AbortController();
+        const timeout = setTimeout(() => ctrl.abort(), 90000);              // 90s: cold start can take ~50s
+        const waking = errEl ? setTimeout(() => setErr(errEl, 'Waking up the server — the first request after a break can take ~50s. Please wait…', 'warn'), 2500) : null;
+        try {
+          return await _fetch(url, Object.assign({ signal: ctrl.signal }, opts));
+        } catch (e) {
+          throw new Error("Couldn't reach the server — it may be waking up from idle. Please wait a few seconds and try again.");
+        } finally {
+          clearTimeout(timeout); if (waking) clearTimeout(waking);
+        }
+      }
+
+      // Keep the free-tier server warm while the app is open (it spins down after ~15 min idle),
+      // so it doesn't cold-start mid-session. Every 10 minutes, a cheap ping.
+      setInterval(() => { try { _fetch('/api/auth/config').catch(() => {}); } catch (e) {} }, 10 * 60 * 1000);
+
       async function loadConfig() {
         try { const r = await _fetch('/api/auth/config'); if (r.ok) { const d = await r.json(); const l = $('authRegLink'); if (l) l.style.display = d.registrationOpen ? '' : 'none'; } } catch (e) {}
       }
@@ -1816,16 +1842,16 @@
       const liBtn = $('li-btn');
       async function doLogin() {
         const login = $('li-login').value.trim(), pass = $('li-pass').value, remember = $('li-remember').checked;
-        const err = $('li-err'); err.style.display = 'none'; err.style.background = ''; err.style.color = '';
-        if (!login || !pass) { err.textContent = 'Enter your username and password.'; err.style.display = 'block'; return; }
+        const err = $('li-err'); setErr(err, '');
+        if (!login || !pass) { setErr(err, 'Enter your email and password.'); return; }
         liBtn.disabled = true; liBtn.textContent = 'Signing in…';
         try {
-          const r = await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ login, password: pass, remember }) });
+          const r = await authFetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ login, password: pass, remember }) }, err);
           const d = await r.json().catch(() => ({}));
-          if (!r.ok) { err.textContent = d.error || 'Sign in failed.'; err.style.display = 'block'; return; }
-          $('li-pass').value = '';
+          if (!r.ok) { setErr(err, (d.error || d.detail || 'Sign in failed.') + (r.status === 401 ? ' (check the exact email — e.g. name.surname@…)' : '')); return; }
+          setErr(err, ''); $('li-pass').value = '';
           showApp(d.user);
-        } catch (e) { err.textContent = 'Request failed: ' + e.message; err.style.display = 'block'; }
+        } catch (e) { setErr(err, e.message); }
         finally { liBtn.disabled = false; liBtn.textContent = 'Sign in'; }
       }
       liBtn.addEventListener('click', doLogin);
@@ -1834,26 +1860,28 @@
       const reBtn = $('re-btn');
       reBtn.addEventListener('click', async () => {
         const body = { name: $('re-name').value.trim(), email: $('re-email').value.trim(), role: $('re-role').value.trim(), password: $('re-pass').value };
-        const err = $('re-err'); err.style.display = 'none';
+        const err = $('re-err'); setErr(err, '');
         reBtn.disabled = true; reBtn.textContent = 'Creating…';
         try {
-          const r = await fetch('/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+          const r = await authFetch('/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }, err);
           const d = await r.json().catch(() => ({}));
-          if (!r.ok) { err.textContent = d.error || 'Could not create account.'; err.style.display = 'block'; return; }
+          if (!r.ok) { setErr(err, d.error || d.detail || 'Could not create account.'); return; }
+          setErr(err, '');
           showApp(d.user);
-        } catch (e) { err.textContent = 'Request failed: ' + e.message; err.style.display = 'block'; }
+        } catch (e) { setErr(err, e.message); }
         finally { reBtn.disabled = false; reBtn.textContent = 'Create account'; }
       });
 
       // ---- Self-service password reset (email + new password) ----
       $('rs-submit').addEventListener('click', async () => {
         const email = $('rs-email').value.trim(), password = $('rs-newpass').value;
-        const err = $('rs-err'); err.style.display = 'none';
-        if (!email || !password) { err.textContent = 'Enter your email and a new password.'; err.style.display = 'block'; return; }
+        const err = $('rs-err'); setErr(err, '');
+        if (!email || !password) { setErr(err, 'Enter your email and a new password.'); return; }
         try {
-          const r = await _fetch('/api/auth/reset', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) });
+          const r = await authFetch('/api/auth/reset', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) }, err);
           const d = await r.json().catch(() => ({}));
-          if (!r.ok) { err.textContent = d.error || 'Reset failed.'; err.style.display = 'block'; return; }
+          if (!r.ok) { setErr(err, (d.error || d.detail || 'Reset failed.') + (r.status === 400 && /no account/i.test(d.error||'') ? ' — check the exact email you registered with.' : '')); return; }
+          setErr(err, '');
           // Sign in automatically with the just-set password so the browser's stale autofill
           // can't get in the way.
           try {
