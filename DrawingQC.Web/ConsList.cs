@@ -1,5 +1,6 @@
 using System.Text.Json;
 using ClosedXML.Excel;
+using ClosedXML.Excel.Drawings;
 using PdfSharp.Pdf;
 using PdfSharp.Pdf.IO;
 
@@ -280,6 +281,32 @@ public static class ConsList
         var xlsx = XlsxPath(p, c);
         if (m.ExcelEntries.Count == 0) { TryDelete(xlsx); m.LastExcelDate = ""; return; }
 
+        // A company logo is mandatory at the top of every file's block. Grab one from the first
+        // source that has it, to fall back on for any file that was exported without a logo.
+        byte[]? logoBytes = null;
+        XLPictureFormat logoFmt = XLPictureFormat.Png;
+        double logoAspect = 3.25;
+        foreach (var e in m.ExcelEntries)
+        {
+            var sp0 = SourcePath(p, c, e);
+            if (!Have(sp0)) continue;
+            try
+            {
+                using var wb0 = new XLWorkbook(sp0);
+                var ws0 = wb0.Worksheets.OrderByDescending(s => s.RangeUsed()?.RowCount() ?? 0).FirstOrDefault();
+                var pic0 = ws0?.Pictures.FirstOrDefault();
+                if (pic0 != null)
+                {
+                    using var ms = new MemoryStream();
+                    pic0.ImageStream.Position = 0; pic0.ImageStream.CopyTo(ms);
+                    logoBytes = ms.ToArray(); logoFmt = pic0.Format;
+                    if (pic0.Height > 0) logoAspect = (double)pic0.Width / pic0.Height;
+                    break;
+                }
+            }
+            catch { }
+        }
+
         using var outWb = new XLWorkbook();
         var outWs = outWb.AddWorksheet(c);   // sheet named "Internal" / "External"
         int outRow = 1;
@@ -328,6 +355,7 @@ public static class ConsList
 
             // Re-place each picture (logo) at this block's top, sized to fit the header (native
             // dimensions are the full-resolution image, so set an explicit display size).
+            bool logoPlaced = false;
             foreach (var pic in ws.Pictures)
             {
                 try
@@ -339,6 +367,19 @@ public static class ConsList
                     int ac = pic.TopLeftCell?.Address.ColumnNumber ?? 1;
                     outWs.AddPicture(img, pic.Format, $"logo{picN++}")
                          .MoveTo(outWs.Cell(blockTop + ar - 1, ac)).WithSize(wpx, h);
+                    logoPlaced = true;
+                }
+                catch { }
+            }
+
+            // Logo is mandatory: if this file was exported without one, inject the company logo.
+            if (!logoPlaced && logoBytes != null)
+            {
+                try
+                {
+                    using var ms = new MemoryStream(logoBytes);
+                    int h = 80, wpx = (int)(h * logoAspect);
+                    outWs.AddPicture(ms, logoFmt, $"logo{picN++}").MoveTo(outWs.Cell(blockTop, 1)).WithSize(wpx, h);
                 }
                 catch { }
             }
