@@ -1,0 +1,48 @@
+# Support Automation (DrawingQC) — self-hosted stack for a Linux VM via Portainer.
+#
+# Two services: the C# web app (built from DrawingQC.Web/Dockerfile) and a PostgreSQL
+# database. All team data — accounts, ConsList metadata AND the uploaded Excel/PDF files
+# (stored as blobs) — lives in Postgres, so the single `dqc_db` volume is the only thing
+# to back up; the web container's disk is just a cache.
+#
+# Deploy in Portainer:  Stacks → Add stack → Git repository
+#   Repository URL:  https://github.com/pushpalata-patil/DrawingQC
+#   Compose path:    docker-compose.yml
+#   Add the environment variables below (at least POSTGRES_PASSWORD), then Deploy.
+#
+# Booklet / AutoCAD sync still need Windows + Word/AutoCAD, so they run via the Local Agent
+# on an engineer's PC (download it from the app sidebar) — everything else runs on this VM.
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-sa_app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-supportautomation}
+    volumes:
+      - dqc_db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sa_app} -d ${POSTGRES_DB:-supportautomation}"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  web:
+    build:
+      context: .
+      dockerfile: DrawingQC.Web/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PORT: "8080"
+      # Switches the app into PostgreSQL mode (Db.cs accepts this key-value form).
+      SUPPORTAUTOMATION_DB: "Host=db;Port=5432;Database=${POSTGRES_DB:-supportautomation};Username=${POSTGRES_USER:-sa_app};Password=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}"
+    ports:
+      - "${WEB_PORT:-8080}:8080"
+
+volumes:
+  dqc_db:
