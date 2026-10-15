@@ -41,8 +41,23 @@ services:
       PORT: "8080"
       # Switches the app into PostgreSQL mode (Db.cs accepts this key-value form).
       SUPPORTAUTOMATION_DB: "Host=db;Port=5432;Database=${POSTGRES_DB:-supportautomation};Username=${POSTGRES_USER:-sa_app};Password=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}"
+      # Uploaded ConsList files live on the mounted volume below, not in the DB — keeps the database
+      # small (important with a small managed DB like Supabase free). Fixed data dir for the volume.
+      SUPPORTAUTOMATION_FILE_STORE: "disk"
+      SUPPORTAUTOMATION_DATA_DIR: "/data"
+    volumes:
+      - dqc_files:/data
     ports:
       - "${WEB_PORT:-8080}:8080"
 
+# ---------------------------------------------------------------------------------------------------
+# Using Supabase (or any external Postgres) instead of the bundled db container?  See SUPABASE.md.
+#   1) Delete the `db` service above and the `dqc_db` volume below.
+#   2) Remove `depends_on` from `web`.
+#   3) Set SUPPORTAUTOMATION_DB to your Supabase session-pooler connection string.
+#   Keep SUPPORTAUTOMATION_FILE_STORE=disk + the dqc_files volume so PDFs stay out of the small DB.
+# ---------------------------------------------------------------------------------------------------
+
 volumes:
   dqc_db:
+  dqc_files:

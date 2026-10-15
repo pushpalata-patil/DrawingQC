@@ -21,28 +21,45 @@ public static class Db
     /// <summary>True when a PostgreSQL connection string is configured; otherwise the app stays file-based.</summary>
     public static bool Enabled => !string.IsNullOrWhiteSpace(ConnString);
 
-    // Accept both Npgsql key-value strings and the postgres://user:pass@host:port/db URL form that
-    // managed hosts (Render, Railway, Heroku, …) hand out, so SUPPORTAUTOMATION_DB can be either.
+    /// <summary>
+    /// Where ConsList file bytes live. Default = in the database (blobs table), which is required on
+    /// an ephemeral filesystem (Render containers). Set SUPPORTAUTOMATION_FILE_STORE=disk when the
+    /// app runs with a persistent disk/volume (a VM / Portainer) — then files stay on disk and only
+    /// metadata goes to the DB, so a small database (Supabase free ~0.5 GB) isn't filled with PDFs.
+    /// </summary>
+    public static bool BlobsInDb => Enabled &&
+        !string.Equals(Environment.GetEnvironmentVariable("SUPPORTAUTOMATION_FILE_STORE"), "disk", StringComparison.OrdinalIgnoreCase);
+
+    // Accept both the Npgsql key-value form AND the postgres://user:pass@host:port/db URL form that
+    // managed hosts (Supabase, Render, Railway, Neon, …) hand out, so SUPPORTAUTOMATION_DB can be
+    // either. SSL is set to Prefer (+ trust the server cert), which works everywhere: cloud hosts
+    // like Supabase use TLS, while a local/compose Postgres with no TLS falls back to plaintext.
     private static string? Normalize(string? cs)
     {
         if (string.IsNullOrWhiteSpace(cs)) return cs;
-        if (!cs.StartsWith("postgres://", StringComparison.OrdinalIgnoreCase) &&
-            !cs.StartsWith("postgresql://", StringComparison.OrdinalIgnoreCase))
-            return cs;
         try
         {
-            var uri = new Uri(cs);
-            var userInfo = uri.UserInfo.Split(':', 2);
-            var b = new NpgsqlConnectionStringBuilder
+            NpgsqlConnectionStringBuilder b;
+            if (cs.StartsWith("postgres://", StringComparison.OrdinalIgnoreCase) ||
+                cs.StartsWith("postgresql://", StringComparison.OrdinalIgnoreCase))
             {
-                Host = uri.Host,
-                Port = uri.Port > 0 ? uri.Port : 5432,
-                Username = Uri.UnescapeDataString(userInfo[0]),
-                Password = userInfo.Length > 1 ? Uri.UnescapeDataString(userInfo[1]) : "",
-                Database = uri.AbsolutePath.TrimStart('/'),
-                SslMode = SslMode.Prefer,
-                TrustServerCertificate = true,
-            };
+                var uri = new Uri(cs);
+                var userInfo = uri.UserInfo.Split(':', 2);
+                b = new NpgsqlConnectionStringBuilder
+                {
+                    Host = uri.Host,
+                    Port = uri.Port > 0 ? uri.Port : 5432,
+                    Username = Uri.UnescapeDataString(userInfo[0]),
+                    Password = userInfo.Length > 1 ? Uri.UnescapeDataString(userInfo[1]) : "",
+                    Database = string.IsNullOrEmpty(uri.AbsolutePath.TrimStart('/')) ? "postgres" : uri.AbsolutePath.TrimStart('/'),
+                };
+            }
+            else
+            {
+                b = new NpgsqlConnectionStringBuilder(cs);   // already key-value
+            }
+            b.SslMode = SslMode.Prefer;
+            b.TrustServerCertificate = true;
             return b.ConnectionString;
         }
         catch { return cs; }
@@ -57,6 +74,8 @@ public static class Db
 
     private static string DataDir()
     {
+        var custom = Environment.GetEnvironmentVariable("SUPPORTAUTOMATION_DATA_DIR");
+        if (!string.IsNullOrWhiteSpace(custom)) return custom;
         var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
         if (string.IsNullOrWhiteSpace(appData)) appData = AppContext.BaseDirectory;
         return Path.Combine(appData, "SupportAutomation");
@@ -389,7 +408,23 @@ CREATE TABLE IF NOT EXISTS mto_runs (
                 }
             }
         }
-        Console.WriteLine($"[Db] Imported from JSON: {users} user(s), {projects} project(s), {files} ConsList file(s).");
+        // File bytes: mirror every ConsList source + consolidated file on disk into the blobs table,
+        // so the data is complete on a remote DB (Supabase/Render) where the container has no local
+        // files. Keys match ConsList.BlobKey (path relative to the ConsList root, forward slashes).
+        // Skipped in disk mode (files stay on the persistent volume, keeping the DB small).
+        int blobs = 0;
+        if (BlobsInDb && Directory.Exists(cl))
+        {
+            foreach (var f in Directory.EnumerateFiles(cl, "*", SearchOption.AllDirectories))
+            {
+                var fn = Path.GetFileName(f);
+                if (fn is "projects.json" or "manifest.json" or "_combined.json") continue; // metadata lives in tables
+                try { PutBlob(Path.GetRelativePath(cl, f).Replace('\\', '/'), File.ReadAllBytes(f)); blobs++; }
+                catch (Exception ex) { Console.Error.WriteLine($"[Db] blob import skipped {fn}: {ex.Message}"); }
+            }
+        }
+
+        Console.WriteLine($"[Db] Imported from JSON: {users} user(s), {projects} project(s), {files} ConsList file(s), {blobs} file blob(s).");
     }
 
     private static void InsertFile(NpgsqlConnection con, NpgsqlTransaction? tx, string plat, string cat, string kind, ConsEntry e, int ord)

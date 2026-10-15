@@ -41,9 +41,16 @@ public static class ConsList
 
     private static string Root()
     {
-        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        if (string.IsNullOrWhiteSpace(appData)) appData = AppContext.BaseDirectory;
-        var dir = Path.Combine(appData, "SupportAutomation", "ConsList");
+        // Must resolve to the same base as Db.DataDir(): honour SUPPORTAUTOMATION_DATA_DIR (a mounted
+        // volume on a VM/container), else %APPDATA%/SupportAutomation.
+        var baseDir = Environment.GetEnvironmentVariable("SUPPORTAUTOMATION_DATA_DIR");
+        if (string.IsNullOrWhiteSpace(baseDir))
+        {
+            var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+            if (string.IsNullOrWhiteSpace(appData)) appData = AppContext.BaseDirectory;
+            baseDir = Path.Combine(appData, "SupportAutomation");
+        }
+        var dir = Path.Combine(baseDir, "ConsList");
         Directory.CreateDirectory(dir);
         return dir;
     }
@@ -70,11 +77,11 @@ public static class ConsList
     // demand, so a redeploy / restart / spin-down on an ephemeral filesystem loses nothing.
     private static string BlobKey(string path) => Path.GetRelativePath(Root(), path).Replace('\\', '/');
 
-    /// <summary>True if the file is on disk, or could be restored from the database.</summary>
+    /// <summary>True if the file is on disk, or could be restored from the database (blob mode).</summary>
     private static bool Have(string path)
     {
         if (File.Exists(path)) return true;
-        if (!Db.Enabled) return false;
+        if (!Db.BlobsInDb) return false;   // disk mode: the file simply lives on the persistent volume
         try
         {
             var data = Db.GetBlob(BlobKey(path));
@@ -86,10 +93,10 @@ public static class ConsList
         catch (Exception ex) { Console.Error.WriteLine("[ConsList] blob fetch failed: " + ex.Message); return false; }
     }
 
-    /// <summary>Mirror a freshly written file into the database.</summary>
+    /// <summary>Mirror a freshly written file into the database (blob mode only).</summary>
     private static void Saved(string path)
     {
-        if (!Db.Enabled || !File.Exists(path)) return;
+        if (!Db.BlobsInDb || !File.Exists(path)) return;
         try { Db.PutBlob(BlobKey(path), File.ReadAllBytes(path)); }
         catch (Exception ex) { Console.Error.WriteLine("[ConsList] blob store failed: " + ex.Message); }
     }
@@ -97,7 +104,7 @@ public static class ConsList
     private static void TryDelete(string path)
     {
         try { if (File.Exists(path)) File.Delete(path); } catch { }
-        if (Db.Enabled) { try { Db.DeleteBlob(BlobKey(path)); } catch { } }
+        if (Db.BlobsInDb) { try { Db.DeleteBlob(BlobKey(path)); } catch { } }
     }
 
     // ---------- projects ----------
@@ -157,7 +164,7 @@ public static class ConsList
             list.Remove(match);
             PersistProjects(list);
             if (Db.Enabled) Db.DeletePlatformData(match);            // remove its file/category rows
-            if (Db.Enabled) { try { Db.DeleteBlobsWithPrefix(Safe(match) + "/"); } catch { } }
+            if (Db.BlobsInDb) { try { Db.DeleteBlobsWithPrefix(Safe(match) + "/"); } catch { } }
             try { var dir = Path.Combine(Root(), Safe(match)); if (Directory.Exists(dir)) Directory.Delete(dir, true); }
             catch { }
             return (true, "");
