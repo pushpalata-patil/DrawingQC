@@ -1,9 +1,6 @@
-databases:
-  # Managed PostgreSQL so team data (accounts, ConsList, run history) survives redeploys.
-  # Free plan is fine to start; note Render free databases expire 30 days after creation
-  # (14-day grace period, then deleted). Upgrade the plan if the team data matters.
-  - name: drawingqc-db
-    plan: free
+# Render blueprint for the web service. The database is now external (Supabase) — set
+# SUPPORTAUTOMATION_DB in the Render dashboard (Environment) to your Supabase session-pooler
+# connection string. See SUPABASE.md.
 
 services:
   - type: web
@@ -15,8 +12,7 @@ services:
     healthCheckPath: /
     autoDeploy: true
     envVars:
-      # Switches the app into PostgreSQL mode; Db.cs parses this postgres:// URL form.
+      # The app's database. Set this in the Render dashboard to the Supabase connection string
+      # (kept out of the repo because it's a secret). Db.cs accepts the postgres:// URL form.
       - key: SUPPORTAUTOMATION_DB
-        fromDatabase:
-          name: drawingqc-db
-          property: connectionString
+        sync: false
