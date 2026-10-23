@@ -37,12 +37,17 @@ public static class Db
     private static string? Normalize(string? cs)
     {
         if (string.IsNullOrWhiteSpace(cs)) return cs;
+        cs = cs.Trim();
         try
         {
             NpgsqlConnectionStringBuilder b;
             if (cs.StartsWith("postgres://", StringComparison.OrdinalIgnoreCase) ||
                 cs.StartsWith("postgresql://", StringComparison.OrdinalIgnoreCase))
             {
+                // Isolate just the URL — if another value got accidentally appended (e.g. a second
+                // env var merged in on a new line / after a space), drop it so parsing never breaks.
+                int cut = cs.IndexOfAny(new[] { ' ', '\t', '\r', '\n' });
+                if (cut > 0) cs = cs.Substring(0, cut);
                 var uri = new Uri(cs);
                 var userInfo = uri.UserInfo.Split(':', 2);
                 b = new NpgsqlConnectionStringBuilder
