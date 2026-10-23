@@ -1,0 +1,45 @@
+# Portainer **Swarm** stack — web app only, DB on Supabase, files on the VM disk.
+#
+# Swarm can't build images, so this uses the pre-built image published to GHCR by the
+# GitHub Actions workflow (.github/workflows/docker-publish.yml). Deploy this in a Swarm
+# Portainer environment (the one that showed "Ignoring unsupported options: build").
+#
+# Deploy in Portainer:  Stacks → Add stack → Git repository
+#   Repository URL:  https://github.com/pushpalata-patil/DrawingQC
+#   Repository reference:  refs/heads/master
+#   Compose path:    docker-compose.swarm.yml
+#   Environment variables:
+#     SUPPORTAUTOMATION_DB = postgresql://postgres.<ref>:<pw>@aws-0-<region>.pooler.supabase.com:5432/postgres
+#     WEB_PORT             = 8080   (optional)
+#
+# Prereq: the GHCR image must exist and be pullable. The Actions workflow builds it; make the
+# package public once (GitHub → your profile → Packages → drawingqc → Package settings →
+# Change visibility → Public), or add GHCR credentials as a Registry in Portainer.
+
+version: "3.8"
+
+services:
+  web:
+    image: ghcr.io/pushpalata-patil/drawingqc:latest
+    environment:
+      PORT: "8080"
+      # Your Supabase session-pooler connection string (set in Portainer's stack env vars).
+      SUPPORTAUTOMATION_DB: "${SUPPORTAUTOMATION_DB}"
+      # Keep ConsList files on the mounted volume, out of the small managed DB.
+      SUPPORTAUTOMATION_FILE_STORE: "disk"
+      SUPPORTAUTOMATION_DATA_DIR: "/data"
+    volumes:
+      - dqc_files:/data
+    ports:
+      - target: 8080
+        published: ${WEB_PORT:-8080}
+        protocol: tcp
+        mode: host
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+        delay: 5s
+
+volumes:
+  dqc_files:
