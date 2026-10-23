@@ -1,0 +1,66 @@
+# Portainer **Swarm** stack with automatic HTTPS (Caddy) — web app + Caddy reverse proxy,
+# DB on Supabase, files on the VM disk.
+#
+# Caddy fetches and renews a free Let's Encrypt certificate automatically for your domain, so the
+# app is served at https://<APP_DOMAIN> with a valid padlock. The web app itself stays internal
+# (no host port) and is reached only through Caddy.
+#
+# PREREQUISITES (must be true or Caddy can't get a certificate):
+#   1. A DNS A record: <APP_DOMAIN>  ->  the VM's PUBLIC IP.
+#   2. Ports 80 AND 443 open on the VM firewall AND not already used by another service
+#      (e.g. if an existing proxy already serves Portainer on 443, Caddy can't bind it —
+#       in that case route the app through that proxy instead of using this file).
+#
+# Deploy in Portainer:  Stacks → Add stack → Git repository
+#   Repository URL:  https://github.com/pushpalata-patil/DrawingQC
+#   Repository reference:  refs/heads/master
+#   Compose path:    docker-compose.caddy.yml
+#   Environment variables:
+#     SUPPORTAUTOMATION_DB = postgresql://postgres.<ref>:<pw>@aws-0-<region>.pooler.supabase.com:5432/postgres
+#     APP_DOMAIN           = drawingqc.inventivebizsol.co.in   (your chosen subdomain)
+#   Deploy → open https://<APP_DOMAIN>
+
+version: "3.8"
+
+services:
+  web:
+    image: ghcr.io/pushpalata-patil/drawingqc:latest
+    environment:
+      PORT: "8080"
+      SUPPORTAUTOMATION_DB: "${SUPPORTAUTOMATION_DB}"
+      SUPPORTAUTOMATION_FILE_STORE: "disk"
+      SUPPORTAUTOMATION_DATA_DIR: "/data"
+    volumes:
+      - dqc_files:/data
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+        delay: 5s
+
+  caddy:
+    image: caddy:2-alpine
+    # One line = reverse proxy + automatic HTTPS (Let's Encrypt) + HTTP->HTTPS redirect.
+    command: caddy reverse-proxy --from ${APP_DOMAIN} --to web:8080
+    ports:
+      - target: 80
+        published: 80
+        protocol: tcp
+        mode: host
+      - target: 443
+        published: 443
+        protocol: tcp
+        mode: host
+    volumes:
+      - caddy_data:/data      # keeps the issued certificate across restarts (avoids LE rate limits)
+      - caddy_config:/config
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+        delay: 5s
+
+volumes:
+  dqc_files:
+  caddy_data:
+  caddy_config:
