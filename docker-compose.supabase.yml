@@ -1,0 +1,38 @@
+# Portainer / Linux-VM stack — web app only, database on Supabase, files on the VM disk.
+#
+# Use this instead of docker-compose.yml when your database is Supabase (or any external Postgres).
+# The VM runs ONLY the web container: accounts + ConsList metadata go to Supabase (tiny), while the
+# uploaded Excel/PDF files live on the `dqc_files` volume on the VM — so they never fill the small
+# Supabase free tier.
+#
+# Deploy in Portainer:  Stacks → Add stack → Git repository
+#   Repository URL:  https://github.com/pushpalata-patil/DrawingQC
+#   Compose path:    docker-compose.supabase.yml
+#   Environment variables (add in the stack editor):
+#     SUPPORTAUTOMATION_DB = postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres
+#     WEB_PORT             = 8080            (optional; host port to publish)
+#   Then Deploy. First build ~8-12 min.
+#
+# NOTE: make the VM your single backend. Since files here live on disk (not in the DB), don't also
+# run the Render web app against the same Supabase — retire/stop it to avoid two backends on one DB.
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: DrawingQC.Web/Dockerfile
+    restart: unless-stopped
+    environment:
+      PORT: "8080"
+      # Your Supabase session-pooler connection string (set in Portainer's stack env vars).
+      SUPPORTAUTOMATION_DB: ${SUPPORTAUTOMATION_DB:?set SUPPORTAUTOMATION_DB to your Supabase connection string}
+      # Keep files on the mounted volume, not in the database.
+      SUPPORTAUTOMATION_FILE_STORE: "disk"
+      SUPPORTAUTOMATION_DATA_DIR: "/data"
+    volumes:
+      - dqc_files:/data
+    ports:
+      - "${WEB_PORT:-8080}:8080"
+
+volumes:
+  dqc_files:
