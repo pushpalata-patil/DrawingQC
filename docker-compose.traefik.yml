@@ -1,0 +1,52 @@
+# Portainer **Swarm** stack routed through your existing **Traefik** (HTTPS), DB on Supabase,
+# files on the VM disk. No new proxy — reuses the Traefik that already serves your other apps.
+#
+# Deploy in Portainer:  Stacks → Add stack → Git repository
+#   Repository URL:  https://github.com/pushpalata-patil/DrawingQC
+#   Repository reference:  refs/heads/master
+#   Compose path:    docker-compose.traefik.yml
+#   Environment variables (set these in the stack editor):
+#     SUPPORTAUTOMATION_DB = postgresql://postgres.<ref>:<pw>@aws-0-<region>.pooler.supabase.com:5432/postgres
+#     APP_DOMAIN           = drawingqc.inventivebizsol.co.in
+#     TRAEFIK_NETWORK      = <the external Traefik overlay network your other apps join>
+#     TRAEFIK_ENTRYPOINT   = <the HTTPS entrypoint, e.g. websecure or https>
+#     CERT_RESOLVER        = <the Traefik certificate resolver name your other apps use>
+#
+# Find TRAEFIK_NETWORK / TRAEFIK_ENTRYPOINT / CERT_RESOLVER by copying them from an app that already
+# works (e.g. inventive-helpdesk-frontend) — see the labels/networks in its stack.
+
+version: "3.8"
+
+services:
+  web:
+    image: ghcr.io/pushpalata-patil/drawingqc:latest
+    environment:
+      PORT: "8080"
+      SUPPORTAUTOMATION_DB: "${SUPPORTAUTOMATION_DB}"
+      SUPPORTAUTOMATION_FILE_STORE: "disk"
+      SUPPORTAUTOMATION_DATA_DIR: "/data"
+    volumes:
+      - dqc_files:/data
+    networks:
+      - traefiknet
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+        delay: 5s
+      labels:
+        - "traefik.enable=true"
+        - "traefik.docker.network=${TRAEFIK_NETWORK}"
+        - "traefik.http.routers.drawingqc.rule=Host(`${APP_DOMAIN}`)"
+        - "traefik.http.routers.drawingqc.entrypoints=${TRAEFIK_ENTRYPOINT}"
+        - "traefik.http.routers.drawingqc.tls=true"
+        - "traefik.http.routers.drawingqc.tls.certresolver=${CERT_RESOLVER}"
+        - "traefik.http.services.drawingqc.loadbalancer.server.port=8080"
+
+networks:
+  traefiknet:
+    external: true
+    name: ${TRAEFIK_NETWORK}
+
+volumes:
+  dqc_files:
