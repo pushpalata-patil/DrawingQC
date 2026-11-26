@@ -1,19 +1,19 @@
 # Portainer **Swarm** stack routed through your existing **Traefik** (HTTPS), DB on Supabase,
-# files on the VM disk. No new proxy — reuses the Traefik that already serves your other apps.
+# files on the VM disk. Traefik settings are taken from your Traefik service:
+#   network = traefik-public, https entrypoint = websecure, cert resolver = le,
+#   and the required constraint label traefik.constraint-label=traefik-public.
 #
 # Deploy in Portainer:  Stacks → Add stack → Git repository
 #   Repository URL:  https://github.com/pushpalata-patil/DrawingQC
 #   Repository reference:  refs/heads/master
 #   Compose path:    docker-compose.traefik.yml
-#   Environment variables (set these in the stack editor):
+#   Environment variables (only two):
 #     SUPPORTAUTOMATION_DB = postgresql://postgres.<ref>:<pw>@aws-0-<region>.pooler.supabase.com:5432/postgres
 #     APP_DOMAIN           = drawingqc.inventivebizsol.co.in
-#     TRAEFIK_NETWORK      = <the external Traefik overlay network your other apps join>
-#     TRAEFIK_ENTRYPOINT   = <the HTTPS entrypoint, e.g. websecure or https>
-#     CERT_RESOLVER        = <the Traefik certificate resolver name your other apps use>
+#   Deploy → open https://<APP_DOMAIN>
 #
-# Find TRAEFIK_NETWORK / TRAEFIK_ENTRYPOINT / CERT_RESOLVER by copying them from an app that already
-# works (e.g. inventive-helpdesk-frontend) — see the labels/networks in its stack.
+# Prereq: APP_DOMAIN must resolve to this server (a DNS A/CNAME record, like your other apps),
+# because Traefik's `le` resolver validates the cert over HTTP (the `web` entrypoint, port 80).
 
 version: "3.8"
 
@@ -28,7 +28,7 @@ services:
     volumes:
       - dqc_files:/data
     networks:
-      - traefiknet
+      - traefik-public
     deploy:
       replicas: 1
       restart_policy:
@@ -36,17 +36,16 @@ services:
         delay: 5s
       labels:
         - "traefik.enable=true"
-        - "traefik.docker.network=${TRAEFIK_NETWORK}"
+        - "traefik.constraint-label=traefik-public"
         - "traefik.http.routers.drawingqc.rule=Host(`${APP_DOMAIN}`)"
-        - "traefik.http.routers.drawingqc.entrypoints=${TRAEFIK_ENTRYPOINT}"
+        - "traefik.http.routers.drawingqc.entrypoints=websecure"
         - "traefik.http.routers.drawingqc.tls=true"
-        - "traefik.http.routers.drawingqc.tls.certresolver=${CERT_RESOLVER}"
+        - "traefik.http.routers.drawingqc.tls.certresolver=le"
         - "traefik.http.services.drawingqc.loadbalancer.server.port=8080"
 
 networks:
-  traefiknet:
+  traefik-public:
     external: true
-    name: ${TRAEFIK_NETWORK}
 
 volumes:
   dqc_files:
