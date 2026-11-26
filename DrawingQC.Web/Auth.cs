@@ -43,9 +43,16 @@ public static class Auth
 
     private static string ResolveDataDir()
     {
-        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        if (string.IsNullOrWhiteSpace(appData)) appData = AppContext.BaseDirectory; // fallback
-        var dir = Path.Combine(appData, "SupportAutomation");
+        // Honour the same data-dir override as the rest of the app (a mounted volume on a VM).
+        var custom = Environment.GetEnvironmentVariable("SUPPORTAUTOMATION_DATA_DIR");
+        string dir;
+        if (!string.IsNullOrWhiteSpace(custom)) { dir = custom; }
+        else
+        {
+            var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+            if (string.IsNullOrWhiteSpace(appData)) appData = AppContext.BaseDirectory; // fallback
+            dir = Path.Combine(appData, "SupportAutomation");
+        }
         try
         {
             Directory.CreateDirectory(dir);
@@ -306,6 +313,32 @@ public static class Auth
         u.Role = role;
         Save(users);
         return (true, null);
+    }
+
+    // Admin creates an account directly for a team member (name + email + password + role).
+    // Unlike self-registration this bypasses the registration-open check and may set any role.
+    public static (bool ok, string? error, UserAccount? user) AdminCreateUser(string? name, string? email, string? role, string? password)
+    {
+        email = (email ?? "").Trim();
+        if (email.Length == 0 || !email.Contains('@')) return (false, "Please enter a valid email address.", null);
+        if (string.IsNullOrEmpty(password) || password!.Length < 6) return (false, "Password must be at least 6 characters.", null);
+        var users = Load();
+        if (users.Any(u => u.Email.Equals(email, StringComparison.OrdinalIgnoreCase)))
+            return (false, "That email is already registered.", null);
+        var username = email;   // email is the login identifier
+        var salt = RandomNumberGenerator.GetBytes(16);
+        var user = new UserAccount
+        {
+            Username = username,
+            Email = email,
+            Name = string.IsNullOrWhiteSpace(name) ? username : name!.Trim(),
+            Role = string.IsNullOrWhiteSpace(role) ? "User" : role!.Trim(),
+            Salt = Convert.ToBase64String(salt),
+            PasswordHash = Convert.ToBase64String(HashPassword(password!, salt)),
+        };
+        users.Add(user);
+        Save(users);
+        return (true, null, user);
     }
 
     public static (bool ok, string? error) AdminResetPassword(string targetId, string? newPassword)

@@ -105,6 +105,13 @@ app.MapGet("/api/admin/users", (HttpContext ctx) =>
     return Results.Ok(new { users = DrawingQC.Web.Auth.ListUsers(), registrationOpen = DrawingQC.Web.Auth.GetSettings().RegistrationOpen });
 });
 
+app.MapPost("/api/admin/users/create", (HttpContext ctx, AdminCreateDto dto) =>
+{
+    if (!DrawingQC.Web.Auth.IsAdmin(CurrentUser(ctx.Request))) return Results.Json(new { error = "Admins only." }, statusCode: 403);
+    var (ok, err, user) = DrawingQC.Web.Auth.AdminCreateUser(dto.name, dto.email, dto.role, dto.password);
+    return ok ? Results.Ok(new { ok = true, user = DrawingQC.Web.Auth.Public(user!) }) : Results.BadRequest(new { error = err });
+});
+
 app.MapPost("/api/admin/role", (HttpContext ctx, AdminRoleDto dto) =>
 {
     if (!DrawingQC.Web.Auth.IsAdmin(CurrentUser(ctx.Request))) return Results.Json(new { error = "Admins only." }, statusCode: 403);
@@ -602,6 +609,7 @@ record ChangePwDto(string? current, string? next);
 record ProfileDto(string? name, string? email, string? role, string? avatar);
 record AdminRoleDto(string? id, string? role);
 record AdminResetDto(string? id, string? password);
+record AdminCreateDto(string? name, string? email, string? role, string? password);
 record AdminIdDto(string? id);
 record RegToggleDto(bool open);
 record ConsProjectDto(string? name);

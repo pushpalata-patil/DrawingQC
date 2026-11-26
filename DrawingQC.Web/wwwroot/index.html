@@ -790,8 +790,27 @@
        #view-admin .ad-btn { border:1px solid var(--border); background:#fff; color:var(--ink); border-radius:8px; padding:6px 11px; font-size:12.5px; font-weight:600; cursor:pointer; }
        #view-admin .ad-btn.danger { color:#b91c1c; border-color:#fca5a5; }
        #view-admin .ad-btn:hover { background:#f8fafc; }
+       #view-admin .ad-addgrid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+       @media (max-width:800px){ #view-admin .ad-addgrid { grid-template-columns:1fr; } }
+       #view-admin .ad-addgrid label { display:block; font-size:12.5px; font-weight:600; color:var(--muted); margin-bottom:5px; }
+       #view-admin .ad-addgrid input, #view-admin .ad-addgrid select { width:100%; border:1px solid var(--border); border-radius:9px; padding:9px 11px; font:inherit; font-size:14px; background:#fff; box-sizing:border-box; }
      </style>
      <div class="mhead"><h1>User management</h1><p class="sub">Manage accounts, roles and access. (Admins only.)</p></div>
+
+     <div class="admin-card" style="margin-bottom:18px;">
+       <h2 style="margin:0 0 14px; font-size:17px; color:var(--ink);">Add a user</h2>
+       <div class="ad-addgrid">
+         <div><label>Full name</label><input type="text" id="au-name" placeholder="e.g. Amruta Deshpande" autocomplete="off"></div>
+         <div><label>Email (they sign in with this)</label><input type="email" id="au-email" placeholder="name@inventivebizsol.com" autocomplete="off"></div>
+         <div><label>Role</label><select id="au-role"></select></div>
+         <div><label>Temporary password</label><input type="text" id="au-pass" placeholder="min 6 characters" autocomplete="off"></div>
+       </div>
+       <div style="margin-top:14px; display:flex; align-items:center; gap:14px;">
+         <button type="button" class="ad-btn" id="au-add" style="background:var(--accent,#4f46e5); color:#fff; border-color:transparent; padding:9px 18px; font-size:13.5px;">Add user</button>
+         <span class="admin-msg" id="au-msg"></span>
+       </div>
+     </div>
+
      <div class="admin-card">
        <div class="admin-toolbar">
          <label><input type="checkbox" id="ad-regopen"> Allow new sign-ups</label>
@@ -1922,6 +1941,7 @@
         if (!r.ok) return;
         const d = await r.json();
         $('ad-regopen').checked = !!d.registrationOpen;
+        if (!$('au-role').options.length) fillRoles($('au-role'), 'Engineer');
         const tb = $('ad-tbody'); tb.innerHTML = '';
         d.users.forEach(u => {
           const roles = ROLES.includes(u.role) ? ROLES : [u.role].concat(ROLES);
@@ -1983,6 +2003,25 @@
         const d = await r.json().catch(() => ({}));
         if (r.ok) adMsg('New sign-ups ' + (open ? 'enabled' : 'disabled') + '.', true);
         else { adMsg(d.error || 'Failed.', false); e.target.checked = !open; }
+      });
+
+      // Admin: add a user directly (so team members have accounts without self-registering).
+      function auMsg(t, ok) { const el = $('au-msg'); if (!el) return; el.textContent = t; el.className = 'admin-msg ' + (ok ? 'ok' : 'err'); }
+      $('au-add').addEventListener('click', async () => {
+        const name = $('au-name').value.trim(), email = $('au-email').value.trim();
+        const role = $('au-role').value, password = $('au-pass').value;
+        if (!email || !email.includes('@')) { auMsg('Enter a valid email.', false); return; }
+        if (!password || password.length < 6) { auMsg('Password must be at least 6 characters.', false); return; }
+        const btn = $('au-add'); btn.disabled = true; const label = btn.textContent; btn.textContent = 'Adding…';
+        try {
+          const r = await fetch('/api/admin/users/create', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, email, role, password }) });
+          const d = await r.json().catch(() => ({}));
+          if (!r.ok) { auMsg(d.error || 'Could not add user.', false); return; }
+          auMsg('Added ' + email + ' — share the password so they can sign in.', true);
+          $('au-name').value = ''; $('au-email').value = ''; $('au-pass').value = '';
+          loadAdmin();
+        } catch (e) { auMsg('Request failed: ' + e.message, false); }
+        finally { btn.disabled = false; btn.textContent = label; }
       });
 
       $('pf-photo').addEventListener('change', e => {
